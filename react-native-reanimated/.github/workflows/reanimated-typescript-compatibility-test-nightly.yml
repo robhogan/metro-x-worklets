@@ -1,0 +1,77 @@
+name: Reanimated TypeScript compatibility test [Nightly]
+env:
+  YARN_ENABLE_HARDENED_MODE: 0
+on:
+  pull_request:
+    paths:
+      - .github/workflows/reanimated-typescript-compatibility-test-nightly.yml
+  schedule:
+    - cron: '37 19 * * *'
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  read-compatibility-json:
+    if: github.repository == 'software-mansion/react-native-reanimated'
+    runs-on: ubuntu-latest
+    outputs:
+      react-native-versions-with-nightly: ${{ steps.set-outputs.outputs.react-native-versions-with-nightly }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          sparse-checkout: |
+            /.nvmrc
+            /.github/workflows/helper
+            /packages/react-native-reanimated/compatibility.json
+          sparse-checkout-cone-mode: false
+      - name: Use Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: '.nvmrc'
+      - name: Read compatibility.json
+        run: node --experimental-strip-types .github/workflows/helper/read-compatibility.ts
+      - name: Set outputs
+        id: set-outputs
+        run: |
+          cat /tmp/react-native-versions-with-nightly.json >> $GITHUB_OUTPUT
+
+  reanimated-typescript-compatibility-test-nightly:
+    needs: read-compatibility-json
+    if: github.repository == 'software-mansion/react-native-reanimated'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        react-native-version: ${{ fromJson(needs.read-compatibility-json.outputs.react-native-versions-with-nightly) }}
+      fail-fast: false
+    concurrency:
+      group: TS-react-native-nightly-${{ matrix.react-native-version }}-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Check if react-native version exists
+        id: check-react-native-version
+        run: |
+          if ! npm view react-native@${{ matrix.react-native-version }} dist-tags ; then
+            echo "React Native version ${{ matrix.react-native-version }} does not exist - Skipping..."
+            echo "SKIP_BUILD=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Use Node.js
+        if: ${{ steps.check-react-native-version.outputs.SKIP_BUILD != 'true' }}
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          cache: 'yarn'
+      - name: Clear annotations
+        if: ${{ steps.check-react-native-version.outputs.SKIP_BUILD != 'true' }}
+        run: .github/workflows/helper/clear-annotations.sh
+
+      - name: Run TypeScript Compatibility Check
+        if: ${{ steps.check-react-native-version.outputs.SKIP_BUILD != 'true' }}
+        uses: ./.github/actions/reanimated-typescript-compatibility-check
+        with:
+          react-native-version: ${{ matrix.react-native-version }}

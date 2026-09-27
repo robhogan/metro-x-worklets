@@ -1,0 +1,20 @@
+name: GitHub Pull Request description format
+on:
+  pull_request_target:
+    types:
+      - opened
+
+permissions:
+  pull-requests: write
+
+jobs:
+  github-pull-request-description-format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update PR Description
+        uses: software-mansion-labs/pr-description@5d5cc919c7628544433cf034cdae4e53cb86a67c
+        with:
+          content: ''
+          regex: "<!-- .* -->\n"
+          regexFlags: img
+          token: ${{ secrets.GITHUB_TOKEN }}

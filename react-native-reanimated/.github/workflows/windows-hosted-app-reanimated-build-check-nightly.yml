@@ -1,0 +1,60 @@
+name: Windows hosted app Reanimated build check [Nightly]
+env:
+  YARN_ENABLE_IMMUTABLE_INSTALLS: 0
+on:
+  pull_request:
+    paths:
+      - .github/workflows/windows-hosted-app-reanimated-build-check-nightly.yml
+  schedule:
+    - cron: '37 19 * * *'
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-hosted-app-reanimated-build-check-nightly:
+    if: github.repository == 'software-mansion/react-native-reanimated'
+    runs-on: windows-latest
+    concurrency:
+      group: build-on-windows-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      APP_NAME: app
+    steps:
+      - name: Set up JDK 17
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      - name:
+          Setup Yarn
+          # Sometimes `npx @react-native-community/cli init` fails at random.
+          # Pre-installing it with Yarn seems to improve stability.
+        run: corepack enable && yarn init --yes
+      - name: Install React Native
+        # temporary version lock due to bug in version 20.1.2
+        run: yarn add @react-native-community/cli@20.1.1
+      - name: Create app
+        run: yarn rnc-cli init ${{ env.APP_NAME }} --pm yarn --skip-install --install-pods false --skip-git-init
+      - name: Setup Yarn Modern in app
+        working-directory: ${{ env.APP_NAME }}
+        run: |
+          touch yarn.lock
+          yarn set version berry
+          yarn config set nodeLinker node-modules
+          yarn config set approvedGitRepositories --json '["https://github.com/software-mansion/react-native-reanimated.git"]'
+          yarn config set npmMinimalAgeGate 0
+      - name: Install dependencies
+        working-directory: ${{ env.APP_NAME }}
+        run: yarn
+      - name: Install Reanimated
+        working-directory: ${{ env.APP_NAME }}
+        run: yarn add "react-native-reanimated@https://github.com/software-mansion/react-native-reanimated.git#workspace=react-native-reanimated&commit=${{ github.sha }}"
+      - name: Install Worklets
+        working-directory: ${{ env.APP_NAME }}
+        run: yarn add "react-native-worklets@https://github.com/software-mansion/react-native-reanimated.git#workspace=react-native-worklets&commit=${{ github.sha }}"
+      - name: Build Android App
+        working-directory: ${{ env.APP_NAME }}/android
+        run: ./gradlew assembleDebug --console=plain

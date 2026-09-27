@@ -1,0 +1,37 @@
+const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
+const {
+  wrapWithReanimatedMetroConfig,
+} = require('react-native-reanimated/metro-config');
+const { getMonorepoMetroOptions } = require('../../scripts/metro');
+const path = require('path');
+
+const modulesToFilter = ['react-native', 'react'];
+const defaultConfig = getDefaultConfig(__dirname);
+const { blockList, extraNodeModules } = getMonorepoMetroOptions(
+  modulesToFilter,
+  __dirname,
+  /** @type {Parameters<typeof getMonorepoMetroOptions>[2]} */ (defaultConfig)
+);
+
+const monorepoRoot = path.resolve(__dirname, '../..');
+
+/** @type {import('@react-native/metro-config').MetroConfig} */
+let config = {
+  projectRoot: __dirname,
+  watchFolders: [monorepoRoot],
+
+  // We need to make sure that only one version is loaded for peerDependencies
+  // So we exclude them at the root, and alias them to the versions in example's node_modules
+  resolver: {
+    blockList,
+    extraNodeModules,
+  },
+};
+
+const { bundleModeMetroConfig } = require('react-native-worklets/bundleMode');
+config = mergeConfig(config, bundleModeMetroConfig);
+
+/** @type {import('@react-native/metro-config').MetroConfig} */
+module.exports = wrapWithReanimatedMetroConfig(
+  mergeConfig(defaultConfig, config)
+);

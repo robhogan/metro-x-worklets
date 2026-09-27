@@ -1,0 +1,316 @@
+// @ts-check
+// Note: type annotations allow type checking and IDEs autocompletion
+
+const lightCodeTheme = require('./src/theme/CodeBlock/highlighting-light.js');
+const darkCodeTheme = require('./src/theme/CodeBlock/highlighting-dark.js');
+
+const webpack = require('webpack');
+const path = require('path');
+
+const {
+  topbarBannerReservationScript,
+} = require('@swmansion/t-rex-ui/topbar-banner');
+// @ts-expect-error -- .ts extension is intentional; not type-checked by tsc here.
+const { TOP_BAR_BANNER } = require('./src/components/topbarBanner.config.ts');
+
+const firstBannerZone = TOP_BAR_BANNER.zones[0];
+const bannerReservationHeadTags = firstBannerZone
+  ? [
+      {
+        tagName: 'script',
+        attributes: { type: 'text/javascript' },
+        innerHTML: topbarBannerReservationScript(
+          firstBannerZone.zoneId,
+          firstBannerZone.contentId,
+          TOP_BAR_BANNER.hiddenPaths
+        ),
+      },
+    ]
+  : [];
+
+const ORGANIZATION_ID = 'https://swmansion.com/#organization';
+
+// same @id as swmansion.com, so engines read one company across both domains
+const structuredDataHeadTag = {
+  tagName: 'script',
+  attributes: { type: 'application/ld+json' },
+  innerHTML: JSON.stringify({
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        '@id': ORGANIZATION_ID,
+        name: 'Software Mansion',
+        url: 'https://swmansion.com',
+        sameAs: [
+          'https://github.com/software-mansion',
+          'https://www.linkedin.com/company/software-mansion/',
+          'https://twitter.com/swmansion',
+          'https://www.youtube.com/c/SoftwareMansion',
+        ],
+      },
+      {
+        '@type': 'SoftwareSourceCode',
+        name: 'React Native Worklets',
+        description:
+          'Multithreading engine for React Native apps and libraries.',
+        codeRepository:
+          'https://github.com/software-mansion/react-native-reanimated',
+        programmingLanguage: ['TypeScript', 'C++'],
+        runtimePlatform: 'React Native',
+        author: { '@id': ORGANIZATION_ID },
+        maintainer: { '@id': ORGANIZATION_ID },
+      },
+    ],
+  }).replace(/</g, '\\u003c'),
+};
+
+/** @type {import('@docusaurus/types').Config} */
+const config = {
+  title:
+    'React Native Worklets: Multithreading engine for your apps and libraries',
+  favicon: 'img/favicon.ico',
+
+  // Set the production url of your site here
+  url: 'https://docs.swmansion.com',
+
+  baseUrl: '/react-native-worklets/',
+
+  trailingSlash: true,
+
+  // GitHub pages deployment config.
+  // If you aren't using GitHub pages, you don't need these.
+  organizationName: 'software-mansion', // Usually your GitHub org/user name.
+  projectName: 'react-native-worklets', // Usually your repo name.
+
+  headTags: [...bannerReservationHeadTags, structuredDataHeadTag],
+
+  scripts: [],
+
+  markdown: {
+    hooks: {
+      onBrokenMarkdownLinks: 'throw',
+    },
+    mermaid: true,
+  },
+
+  themes: ['@docusaurus/theme-mermaid'],
+
+  onBrokenLinks: 'throw',
+  onBrokenAnchors: 'throw',
+
+  // Even if you don't use internalization, you can use this field to set useful
+  // metadata like html lang. For example, if your site is Chinese, you may want
+  // to replace "en" with "zh-Hans".
+  i18n: { defaultLocale: 'en', locales: ['en'] },
+
+  presets: [
+    [
+      'classic',
+      /** @type {import('@docusaurus/preset-classic').Options} */
+      ({
+        docs: {
+          breadcrumbs: false,
+          sidebarPath: require.resolve('./sidebars.js'),
+          sidebarCollapsible: true,
+          sidebarCollapsed: false,
+          editUrl:
+            'https://github.com/software-mansion/react-native-reanimated/edit/main/docs/docs-worklets',
+          lastVersion: 'current',
+          versions: {
+            current: { label: '0.13' },
+            '0.10-0.12': { label: '0.10-0.12', banner: 'none' },
+            0.9: { label: '0.9', banner: 'none' },
+          },
+        },
+        theme: { customCss: require.resolve('./src/css/index.css') },
+      }),
+    ],
+    [
+      require.resolve('@swmansion/t-rex-ui/preset'),
+      { collapsibleSidebar: true },
+    ],
+  ],
+  themeConfig:
+    /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
+    ({
+      image: 'img/og-image.png',
+      colorMode: { respectPrefersColorScheme: true },
+      metadata: [
+        { name: 'og:image:width', content: '1200' },
+        { name: 'og:image:height', content: '630' },
+      ],
+      navbar: {
+        title: 'React Native Worklets',
+        hideOnScroll: true,
+        logo: {
+          alt: 'React Native Worklets',
+          src: 'img/logo.svg',
+          srcDark: 'img/logo-dark.svg',
+        },
+        items: [
+          {
+            type: 'docsVersionDropdown',
+            position: 'right',
+            dropdownActiveClassDisabled: true,
+          },
+          {
+            href: 'https://github.com/software-mansion/react-native-reanimated/tree/main/packages/react-native-worklets',
+            position: 'right',
+            className: 'header-github',
+            'aria-label': 'GitHub repository',
+          },
+        ],
+      },
+      // App.js 2025 Banner
+      announcementBar: {
+        id: 'appjs-2025',
+        content: ' ',
+        backgroundColor: '#f7eded',
+        textColor: '#484dfc',
+      },
+      footer: {
+        style: 'light',
+        links: [],
+        copyright:
+          'All trademarks and copyrights belong to their respective owners.',
+      },
+      prism: {
+        additionalLanguages: ['bash', 'diff', 'json', 'mermaid'],
+        theme: lightCodeTheme,
+        darkTheme: darkCodeTheme,
+      },
+      algolia: {
+        appId: 'EXKV34DSZ0',
+        apiKey: 'b0df4e45a4bec8a2f79aa77da07b56bd',
+        indexName: 'react-native-worklets',
+        contextualSearch: false,
+      },
+    }),
+  plugins: [
+    ...[
+      process.env.NODE_ENV === 'production' && '@docusaurus/plugin-debug',
+      process.env.NODE_ENV === 'production' && [
+        '@docusaurus/plugin-google-tag-manager',
+        {
+          containerId: 'GTM-KHX5NRM8',
+        },
+      ],
+    ].filter(Boolean),
+    [
+      '@docusaurus/plugin-client-redirects',
+      /** @type {import('@docusaurus/plugin-client-redirects').Options} */
+      ({
+        redirects: [
+          {
+            from: '/docs/worklets-babel-plugin/about',
+            to: '/docs/worklets-plugin/about',
+          },
+          {
+            from: '/docs/worklets-babel-plugin/plugin-options',
+            to: '/docs/worklets-plugin/plugin-options',
+          },
+        ],
+      }),
+    ],
+    function svgModulePlugin() {
+      return {
+        name: 'svg-module-plugin',
+        configureWebpack(config, isServer, utils) {
+          return {
+            module: {
+              rules: [
+                {
+                  test: /\.js?$/,
+                  include: [
+                    path.resolve(
+                      __dirname,
+                      'node_modules/@react-native/assets-registry/registry'
+                    ),
+                  ],
+                  use: {
+                    loader: require.resolve('babel-loader'),
+                    options: {
+                      babelrc: false,
+                      configFile: false,
+                      presets: [require.resolve('@babel/preset-flow')],
+                    },
+                  },
+                },
+              ],
+            },
+          };
+        },
+      };
+    },
+    async function reanimatedDocusaurusPlugin(context, options) {
+      return {
+        name: 'react-native-worklets/docusaurus-plugin',
+        configureWebpack(config, isServer, utils) {
+          const processMock = !isServer ? { process: { env: {} } } : {};
+
+          const raf = require('raf');
+          raf.polyfill();
+
+          return {
+            mergeStrategy: { 'resolve.extensions': 'prepend' },
+            plugins: [
+              new webpack.DefinePlugin({ ...processMock, __DEV__: 'false' }),
+            ],
+            module: {
+              rules: [
+                { test: /\.txt$/, type: 'asset/source' },
+                { test: /\.tsx?$/, use: 'babel-loader' },
+                {
+                  test: /\.js$/,
+                  exclude: /\.yarn[\\/]unprocessed/,
+                  use: 'babel-loader',
+                },
+                {
+                  test: /\.m?js$/,
+                  resolve: {
+                    fullySpecified: false,
+                  },
+                },
+                {
+                  test: /react-native-(worklets|reanimated)[\\/]lib[\\/]module[\\/].*\.js$/,
+                  type: 'javascript/auto',
+                },
+              ],
+            },
+            resolve: {
+              alias: {
+                'react-native$': 'react-native-web',
+                typescript: path.resolve(
+                  __dirname,
+                  '../../.yarn/unprocessed/typescript'
+                ),
+              },
+              extensions: ['.web.js', '...'],
+            },
+            ignoreWarnings: [
+              (error) => {
+                /*
+                 * Ignore warning we can't fix:
+                 * "moduleName":"./node_modules/typescript/lib/typescript.js","loc":"50:2440-2459","message":"Critical dependency: the request of a dependency is an expression"
+                 */
+                if (
+                  error.message.includes(
+                    'Critical dependency: the request of a dependency is an expression'
+                  ) &&
+                  // @ts-expect-error Not exposed type.
+                  error?.module?.context?.includes('typescript/lib')
+                ) {
+                  return true;
+                }
+                return false;
+              },
+            ],
+          };
+        },
+      };
+    },
+  ],
+};
+
+module.exports = config;

@@ -1,0 +1,41 @@
+name: GitHub issue repro check
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created, edited, deleted]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  github-issue-repro-check:
+    if: ${{ github.repository == 'software-mansion/react-native-reanimated' && !contains(github.event.issue.labels.*.name, 'Maintainer issue') }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: needs-repro-${{ github.event.issue.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout Actions
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: 'software-mansion-labs/swmansion-bot'
+          ref: b9b49d4de95b48a5a9688f94a7642b49f0e810c7
+
+      - uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c
+        with:
+          path: '**/node_modules'
+          key: ${{ runner.os }}-modules-${{ hashFiles('**/yarn.lock') }}
+
+      - name: Install Actions
+        run: yarn install
+
+      - name: Needs Repro
+        uses: ./needs-repro
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          needs-repro-label: 'Missing repro'
+          needs-repro-response: "Hey! 👋 \n\nThe issue doesn't seem to contain a [minimal reproduction](https://stackoverflow.com/help/minimal-reproducible-example).\n\nCould you provide a [snack](https://snack.expo.dev/) or a link to a GitHub repository under your username that reproduces the problem?"
+          repro-provided-label: 'Repro provided'
+          check-issues-only-created-after: 2022-01-01

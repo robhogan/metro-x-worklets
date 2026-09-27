@@ -1,0 +1,36 @@
+name: Check branch changes
+on:
+  workflow_call:
+    inputs:
+      branch:
+        required: true
+        type: string
+    outputs:
+      has_changes:
+        value: ${{ jobs.check.outputs.has_changes }}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.commit_check.outputs.has_changes }}
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.branch }}
+
+      - id: commit_check
+        run: |
+          COUNT=$(git log --oneline --since='24 hours ago' | wc -l)
+          echo "Found $COUNT commits in the last 24 hours on branch ${{ inputs.branch }}"
+
+          if [ "$COUNT" -gt 0 ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi

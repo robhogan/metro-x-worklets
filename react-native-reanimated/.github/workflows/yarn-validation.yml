@@ -1,0 +1,29 @@
+name: Yarn validation
+env:
+  YARN_ENABLE_HARDENED_MODE: 1
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  yarn-validation:
+    if: github.repository == 'software-mansion/react-native-reanimated'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Use Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+
+      - name: Check if all versions are exact
+        working-directory: ${{ github.workspace }}
+        run: node ./scripts/disallow-non-exact.js
+
+      - name: Install monorepo dependencies
+        run: yarn install --immutable
+
+      - name: Check for dependency duplication
+        run: yarn dedupe --check

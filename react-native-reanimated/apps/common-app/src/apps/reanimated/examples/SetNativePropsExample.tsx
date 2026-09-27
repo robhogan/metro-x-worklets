@@ -1,0 +1,72 @@
+import React from 'react';
+import { Button, StyleSheet, TextInput } from 'react-native';
+import {
+  GestureDetector,
+  GestureHandlerRootView,
+  useTapGesture,
+} from 'react-native-gesture-handler';
+import Animated, {
+  setNativeProps,
+  useAnimatedRef,
+} from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
+
+const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
+
+function delay(ms: number) {
+  const start = performance.now();
+  while (performance.now() - start < ms) {
+    // do nothing
+  }
+}
+
+export default function SetNativePropsExample() {
+  const [text, setText] = React.useState('Hello');
+
+  const animatedRef = useAnimatedRef<typeof AnimatedTextInput>();
+
+  const send = () => {
+    delay(500);
+    console.log('SEND', text);
+    setText(''); // calling setText affects the JS state but doesn't update the native view
+  };
+
+  const tap = useTapGesture({
+    onDeactivate: () => {
+      'worklet';
+      setNativeProps(animatedRef, {
+        text: '',
+        backgroundColor: `hsl(${Math.random() * 360}, 100%, 50%)`,
+      });
+      scheduleOnRN(send);
+    },
+  });
+
+  return (
+    <GestureHandlerRootView style={styles.container}>
+      <AnimatedTextInput
+        value={text}
+        onChangeText={setText}
+        style={styles.input}
+        ref={animatedRef}
+        autoFocus
+      />
+      <GestureDetector gesture={tap}>
+        <Button title="Send" />
+      </GestureDetector>
+    </GestureHandlerRootView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  input: {
+    width: 250,
+    padding: 3,
+    borderWidth: 1,
+  },
+});

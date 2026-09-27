@@ -1,0 +1,51 @@
+name: docs build
+description: Lint and build Reanimated and Worklets documentation
+inputs:
+  REANIMATED_DOCS_DIR:
+    description: Directory of Reanimated docs
+    default: 'docs/docs-reanimated'
+    required: true
+  WORKLETS_DOCS_DIR:
+    description: Directory of Worklets docs
+    default: 'docs/docs-worklets'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Check docs packages share dependency versions
+      shell: bash
+      run: node ./scripts/validate-docs-versions.js
+
+    - name: Lint check Reanimated docs
+      shell: bash
+      working-directory: ${{ inputs.REANIMATED_DOCS_DIR }}
+      run: yarn lint
+    - name: Build Reanimated docs
+      shell: bash
+      working-directory: ${{ inputs.REANIMATED_DOCS_DIR }}
+      run: yarn build
+    - name: Check Reanimated docs llms.txt
+      shell: bash
+      working-directory: ${{ inputs.REANIMATED_DOCS_DIR }}
+      run: |
+        file=build/llms.txt
+        if [ ! -s "$file" ]; then
+          echo "::error::$file is missing or empty"
+          exit 1
+        fi
+        count=$(grep -cE '^- \[[^]]+\]\(https://docs\.swmansion\.com/react-native-reanimated/docs/[^)]*\)' "$file" || true)
+        if [ "$count" -eq 0 ]; then
+          echo "::error::$file lists no documentation pages"
+          exit 1
+        fi
+        echo "llms.txt lists $count documentation pages"
+
+    - name: Lint check Worklets docs
+      shell: bash
+      working-directory: ${{ inputs.WORKLETS_DOCS_DIR }}
+      run: yarn lint
+    - name: Build Worklets docs
+      shell: bash
+      working-directory: ${{ inputs.WORKLETS_DOCS_DIR }}
+      run: yarn build

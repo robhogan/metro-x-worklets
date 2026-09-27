@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["../common-app/src/*"]
+      // "react": ["./node_modules/@types/react"]
+    }
+  },
+  "include": ["."],
+  "exclude": [".bundle", "macos", "vendor"]
+}

@@ -1,0 +1,40 @@
+name: Example Next build check and tests
+env:
+  YARN_ENABLE_HARDENED_MODE: 0
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  example-next-build-check-and-test:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: build-next-example-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      WORKING_DIRECTORY: apps/next-example
+    steps:
+      - name: Checkout Git repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Use Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          cache: yarn
+      - name: Install monorepo node dependencies
+        run: yarn install --immutable
+      - name: Build packages
+        run: yarn build
+      - name: Install Cypress dependencies
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: yarn cypress install
+
+      - name: Compile production build
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: yarn build:next
+
+      - name: Run e2e tests
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: yarn e2e:headless

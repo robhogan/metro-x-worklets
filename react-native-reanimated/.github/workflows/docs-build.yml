@@ -1,0 +1,28 @@
+name: docs build
+env:
+  YARN_ENABLE_HARDENED_MODE: 0
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docs-build:
+    runs-on: ubuntu-latest
+    env:
+      REANIMATED_DOCS_DIR: docs/docs-reanimated
+      WORKLETS_DOCS_DIR: docs/docs-worklets
+    steps:
+      - name: Check out
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Install monorepo node dependencies
+        run: yarn install
+
+      # We always build both docs because they are released together.
+      - name: Lint and build Reanimated and Worklets docs
+        uses: ./.github/actions/docs-build
+        with:
+          REANIMATED_DOCS_DIR: ${{ env.REANIMATED_DOCS_DIR }}
+          WORKLETS_DOCS_DIR: ${{ env.WORKLETS_DOCS_DIR }}

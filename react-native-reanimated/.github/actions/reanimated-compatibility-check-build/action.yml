@@ -1,0 +1,86 @@
+name: Reanimated compatibility check build
+description: Check React Native Reanimated compatibility with different React Native versions
+inputs:
+  react-native-versions:
+    description: Array of React Native versions
+    required: true
+  platform:
+    description: Platform to test (iOS or Android)
+    required: true
+  mode:
+    description: Build mode (Debug or Release)
+    required: true
+  github-sha:
+    description: GitHub SHA to use for installing packages
+    required: true
+  app-name:
+    description: Name of the test app
+    default: 'app'
+    required: false
+  run-spm:
+    description: After the CocoaPods iOS build, deintegrate and rebuild via SPM
+    default: 'false'
+    required: false
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Yarn
+      shell: bash
+      run: corepack enable && yarn init
+    - name: Install React Native CLI
+      shell: bash
+      # temporary version lock due to bug in version 20.1.2
+      run: yarn add @react-native-community/cli@20.1.1
+    - name: Create app
+      shell: bash
+      run: yarn rnc-cli init ${{inputs.app-name}} --version ${{ inputs.react-native-versions }} --skip-install --install-pods 0 --skip-git-init
+    - name: Setup Yarn Modern in app
+      # For convenience, sometimes there are vague issues with RN CLI and Yarn Legacy on the runner.
+      working-directory: ${{ inputs.app-name }}
+      shell: bash
+      run: |
+        touch yarn.lock
+        yarn set version berry
+        yarn config set nodeLinker node-modules
+        yarn config set approvedGitRepositories --json '["https://github.com/software-mansion/react-native-reanimated.git"]'
+        yarn config set npmMinimalAgeGate 0
+    - name: Install Reanimated
+      working-directory: ${{ inputs.app-name }}
+      shell: bash
+      run: yarn add "react-native-reanimated@https://github.com/software-mansion/react-native-reanimated.git#workspace=react-native-reanimated&commit=${{ github.sha }}"
+    - name: Install Worklets
+      working-directory: ${{ inputs.app-name }}
+      shell: bash
+      run: yarn add "react-native-worklets@https://github.com/software-mansion/react-native-reanimated.git#workspace=react-native-worklets&commit=${{ github.sha }}"
+    - name: Setup Ruby (iOS)
+      if: ${{ inputs.platform == 'iOS' }}
+      uses: ruby/setup-ruby@6aaa311d81eba98ae12eaffbcb63296ace0efcde
+      with:
+        ruby-version: '3.3'
+        bundler-cache: true # runs 'bundle install' and caches installed gems automatically
+    - name: Install Pods (iOS)
+      if: ${{ inputs.platform == 'iOS' }}
+      working-directory: ${{ inputs.app-name }}/ios
+      shell: bash
+      run: bundle install && bundle exec pod update
+    - name: Build app (iOS, CocoaPods)
+      if: ${{ inputs.platform == 'iOS' }}
+      working-directory: ${{ inputs.app-name }}/ios
+      shell: bash
+      run: xcodebuild -workspace ${{inputs.app-name}}.xcworkspace -configuration ${{inputs.mode}} -scheme ${{inputs.app-name}} -destination "generic/platform=iOS Simulator" -quiet
+    - name: SPM scaffold
+      if: ${{ inputs.platform == 'iOS' && inputs.run-spm == 'true' }}
+      working-directory: ${{ inputs.app-name }}
+      shell: bash
+      run: npx react-native spm scaffold --deintegrate --yes
+    - name: Build app (iOS, SPM)
+      if: ${{ inputs.platform == 'iOS' && inputs.run-spm == 'true' }}
+      working-directory: ${{ inputs.app-name }}/ios
+      shell: bash
+      run: xcodebuild -project ${{inputs.app-name}}.xcodeproj -configuration ${{inputs.mode}} -scheme ${{inputs.app-name}} -destination "generic/platform=iOS Simulator" -quiet
+    - name: Build app (Android)
+      if: ${{ inputs.platform == 'Android' }}
+      working-directory: ${{ inputs.app-name }}/android
+      shell: bash
+      run: ./gradlew assemble${{ inputs.mode }} --console=plain

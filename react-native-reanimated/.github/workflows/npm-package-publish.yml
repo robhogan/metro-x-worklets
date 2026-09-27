@@ -1,0 +1,91 @@
+name: npm package publish
+on:
+  workflow_call:
+    inputs:
+      package-name:
+        description: 'Name of the package to publish - react-native-worklets or react-native-reanimated.'
+        required: true
+        type: string
+
+      package-json-path:
+        description: 'Path to the package.json file of the package to be published.'
+        required: true
+        type: string
+
+      publish:
+        description: 'Whether to publish the package or just do a dry run.'
+        required: false
+        type: boolean
+        default: false
+
+      version:
+        description: 'Version to be published if cannot be inferred automatically, use for stable releases.'
+        required: false
+        type: string
+        default: ''
+
+      release-type:
+        description: 'Release type to be published (stable, nightly, beta, rc)'
+        type: string
+        required: true
+
+      npm-tag:
+        description: 'npm tag to publish under (usually inferred from release type and version)'
+        required: false
+        type: string
+        default: ''
+
+      runs-on:
+        description: 'Runner for the publish job.'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+
+      artifacts-pattern:
+        description: 'Glob of workflow artifacts to download before building, empty to skip.'
+        required: false
+        type: string
+        default: ''
+
+      artifacts-path:
+        description: 'Directory the artifacts matching artifacts-pattern are merged into.'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Use Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          cache: 'yarn'
+          node-version-file: '.nvmrc'
+
+      - name: Download prebuilt artifacts
+        if: inputs.artifacts-pattern != ''
+        uses: actions/download-artifact@448e3f862ab3ef47aa50ff917776823c9946035b
+        with:
+          pattern: ${{ inputs.artifacts-pattern }}
+          path: ${{ inputs.artifacts-path }}
+          merge-multiple: true
+
+      - name: Build and publish ${{ inputs.package-name }}
+        uses: software-mansion/npm-package-publish@bbfbcdf3f27e2dc288d7d56f5989a731efc79e6f
+        with:
+          package-name: ${{ inputs.package-name }}
+          package-json-path: ${{ inputs.package-json-path }}
+          release-type: ${{ inputs.release-type || 'nightly' }}
+          version: ${{ inputs.version }}
+          npm-tag: ${{ inputs.npm-tag }}
+          dry-run: ${{ !inputs.publish }}
+          version-getter-script: 'scripts/resolve-release-version.js'
+          perform-git-operations: 'false'

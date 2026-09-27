@@ -1,0 +1,38 @@
+name: Github issue platforms check
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  github-issue-platforms-check:
+    if: ${{ github.repository == 'software-mansion/react-native-reanimated' && !contains(github.event.issue.labels.*.name, 'Maintainer issue') }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: platforms-${{ github.event.issue.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout Actions
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: 'software-mansion-labs/swmansion-bot'
+          ref: b9b49d4de95b48a5a9688f94a7642b49f0e810c7
+
+      - uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c
+        with:
+          path: '**/node_modules'
+          key: ${{ runner.os }}-modules-${{ hashFiles('**/yarn.lock') }}
+
+      - name: Install Actions
+        run: yarn install
+
+      - name: Platforms
+        uses: ./platforms
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          platforms-section-header: Platforms
+          platforms-comma-separated: true
+          platforms-with-labels: '{"Android": "Platform: Android", "iOS": "Platform: iOS", "Web": "Platform: Web"}'

@@ -1,0 +1,130 @@
+import { transformFromAstSync } from '@babel/core';
+import type { Binding, NodePath } from '@babel/traverse';
+import type {
+  FunctionExpression,
+  ImportDeclaration,
+  ImportSpecifier,
+  JSXAttribute,
+} from '@babel/types';
+import {
+  cloneNode,
+  exportDefaultDeclaration,
+  importDeclaration,
+  isReturnStatement,
+  program,
+  stringLiteral,
+} from '@babel/types';
+import assert from 'assert';
+import { writeFileSync } from 'fs';
+import { dirname, resolve } from 'path';
+
+import { createImportPathLiteral } from './imports';
+import type { WorkletsPluginPass } from './types';
+import { generatedWorkletsDir } from './types';
+
+export function generateWorkletFile(
+  moduleBindingsToImport: Set<Binding>,
+  relativeBindingsToImport: Set<Binding>,
+  factory: FunctionExpression,
+  workletHash: number,
+  state: WorkletsPluginPass
+) {
+  const libraryImports = Array.from(moduleBindingsToImport)
+    .filter(
+      (binding) =>
+        (binding.path.isImportSpecifier() ||
+          binding.path.isImportDefaultSpecifier()) &&
+        binding.path.parentPath.isImportDeclaration()
+    )
+    .map((binding) =>
+      importDeclaration(
+        [cloneNode(binding.path.node as ImportSpecifier, true)],
+        stringLiteral(
+          (binding.path.parentPath!.node as ImportDeclaration).source.value
+        )
+      )
+    );
+
+  const filesDirPath = resolve(
+    dirname(require.resolve('react-native-worklets/package.json')),
+    generatedWorkletsDir
+  );
+
+  const relativeImports = Array.from(relativeBindingsToImport)
+    .filter(
+      (binding) =>
+        binding.path.isImportSpecifier() &&
+        binding.path.parentPath.isImportDeclaration()
+    )
+    .map((binding) =>
+      importDeclaration(
+        [cloneNode(binding.path.node as ImportSpecifier, true)],
+        createImportPathLiteral(
+          (binding.path.parentPath! as NodePath<ImportDeclaration>).node.source
+            .value,
+          state
+        )
+      )
+    );
+
+  const imports = [...libraryImports, ...relativeImports];
+
+  const statements = [...factory.body.body];
+  const returnedWorklet = statements.pop();
+  assert(isReturnStatement(returnedWorklet) && returnedWorklet.argument);
+  const newProg = program([
+    ...imports,
+    ...(factory.params.length === 0
+      ? [...statements, exportDefaultDeclaration(returnedWorklet.argument)]
+      : [exportDefaultDeclaration(factory)]),
+  ]);
+
+  const transformedProg = transformFromAstSync(newProg, undefined, {
+    filename: state.file.opts.filename,
+    presets: [resolvePresetTypescript()],
+    plugins: [stripJsxDevAttributesPlugin],
+    ast: false,
+    babelrc: false,
+    configFile: false,
+    comments: false,
+  })?.code;
+
+  assert(transformedProg, '[Worklets] `transformedProg` is undefined.');
+
+  const dedicatedFilePath = resolve(filesDirPath, `${workletHash}.js`);
+
+  const output = process.env.WORKLETS_WRITE_ORIGIN
+    ? `// __workletOrigin: ${state.file.opts.filename ?? 'unknown'}\n${transformedProg}`
+    : transformedProg;
+
+  writeFileSync(dedicatedFilePath, output);
+}
+
+function resolvePresetTypescript(): string {
+  try {
+    return require.resolve('@babel/preset-typescript');
+  } catch {
+    return require.resolve('@babel/preset-typescript', {
+      paths: [dirname(require.resolve('react-native-worklets/package.json'))],
+    });
+  }
+}
+
+const stripJsxDevAttributesPlugin = {
+  name: 'worklets-strip-jsx-dev-attributes',
+  visitor: {
+    JSXAttribute(path: NodePath<JSXAttribute>) {
+      const name = path.node.name;
+
+      if (name.type !== 'JSXIdentifier') {
+        return;
+      }
+
+      if (name.name !== '__self' && name.name !== '__source') {
+        return;
+      }
+
+      path.remove();
+    },
+  },
+};

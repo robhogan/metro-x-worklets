@@ -1,0 +1,14 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@/*": ["../common-app/src/*"],
+      // Required to enable hot reload when working on the react-native-reanimated source code
+      "react-native-reanimated": ["../../packages/react-native-reanimated/src"]
+    },
+    "moduleSuffixes": [".web", ""]
+  },
+  "include": ["."],
+  "exclude": [".expo", "assets"]
+}
