@@ -1,0 +1,6 @@
+node_modules/
+.sl/
+.metro-cache/
+dist/
+.yarn/cache/
+.yarn/install-state.gz

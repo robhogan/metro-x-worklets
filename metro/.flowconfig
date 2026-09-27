@@ -1,0 +1,41 @@
+[ignore]
+packages/*/build/**
+.hg/**
+.sl/**
+.git/**
+.claude/**
+# this transient dep bundles tests with their package, which flow attempts to parse
+# and crashes out as the test includes purposely malformed json
+**/node_modules/resolve/test/**
+
+[options]
+emoji=true
+builtin_lib=core-only
+format.bracket_spacing=false
+
+munge_underscores=true
+
+module.name_mapper='\(metro-[^/]*\)' -> '<PROJECT_ROOT>/packages/\1/src/index.js'
+
+[lints]
+sketchy-null-number=warn
+sketchy-null-mixed=warn
+sketchy-number=warn
+untyped-type-import=warn
+nonstrict-import=warn
+deprecated-type=error
+unsafe-getters-setters=warn
+unnecessary-invariant=warn
+unused-promise=error
+
+[strict]
+deprecated-type
+nonstrict-import
+sketchy-null
+unclear-type
+unsafe-getters-setters
+untyped-import
+untyped-type-import
+
+[version]
+^0.333.0
