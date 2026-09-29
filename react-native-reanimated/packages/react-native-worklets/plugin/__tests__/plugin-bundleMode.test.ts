@@ -8,38 +8,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { countOccurrences } from '../jest/pluginTestUtils';
-
-type CapturedFile = { path: string; content: string };
-
-const capturedFiles: CapturedFile[] = [];
-
-// The OXC transform writes its files from Rust, so they never reach the `fs`
-// mock below. Its jest setup records them on `globalThis` instead.
-function nativelyEmittedFiles(): CapturedFile[] {
-  return ((
-    globalThis as { __WORKLETS_OXC_EMITTED__?: CapturedFile[] }
-  ).__WORKLETS_OXC_EMITTED__ ??= []);
-}
-
-function emittedFiles(): CapturedFile[] {
-  return capturedFiles.length > 0 ? [...capturedFiles] : nativelyEmittedFiles();
-}
-
-jest.mock('fs', () => {
-  const actual = jest.requireActual('fs');
-  return {
-    ...actual,
-    writeFileSync: (filepath: string, content: string) => {
-      capturedFiles.push({ path: String(filepath), content: String(content) });
-    },
-  };
-});
-
-// eslint-disable-next-line import/first
 import type { PluginOptions } from '../index';
-// eslint-disable-next-line import/first
 import plugin from '../index';
+import { countOccurrences } from '../jest/pluginTestUtils';
 
 const MOCK_LOCATION = 'test.js';
 const MOCK_TSX_LOCATION = 'test.tsx';
@@ -60,7 +31,52 @@ const TOGGLE_PATH_CASES: ReadonlyArray<[label: string, filename: string]> = [
   ],
 ];
 
-const REQUIRE_PREFIX = 'require("react-native-worklets/.worklets/';
+const DATA_URL_PREFIX = 'metro:inline;base64,';
+const INLINE_MODULE_PATTERN = /metro:inline;base64,([A-Za-z0-9+/=]+)/g;
+const REQUIRE_PREFIX = `require("${DATA_URL_PREFIX}`;
+const WORKLET_MODULE_DIRECTIVE = /^["']worklet-module["'];/;
+
+type GeneratedModule = { specifier: string; content: string };
+
+/**
+ * Every generated worklet module the code requires, in order of appearance,
+ * each followed by the modules its own content requires in turn.
+ */
+function generatedModules(code: string): GeneratedModule[] {
+  return Array.from(
+    code.matchAll(INLINE_MODULE_PATTERN),
+    ([specifier, payload]): GeneratedModule => ({
+      specifier,
+      content: Buffer.from(payload, 'base64').toString('utf8'),
+    })
+  ).flatMap((module) => [module, ...generatedModules(module.content)]);
+}
+
+/**
+ * Keeps snapshots readable: each base64 payload is replaced by its position
+ * among the distinct payloads in the string, so the snapshot still pins the
+ * transport and the module count without a multi-KB blob.
+ */
+function redactGeneratedModules(code: string): string {
+  const positions = new Map<string, number>();
+  return code.replace(INLINE_MODULE_PATTERN, (specifier) => {
+    if (!positions.has(specifier)) {
+      positions.set(specifier, positions.size + 1);
+    }
+    return `${DATA_URL_PREFIX}<module ${positions.get(specifier)}>`;
+  });
+}
+
+function reformat(code: string, filename: string = MOCK_LOCATION): string {
+  const transformed = transformSync(code, {
+    filename,
+    compact: false,
+    babelrc: false,
+    configFile: false,
+  });
+  assert(transformed);
+  return transformed.code ?? '';
+}
 
 function runPlugin(
   input: string,
@@ -82,14 +98,13 @@ function runPlugin(
   };
   const transformed = transformSync(strippedInput, config);
   assert(transformed);
-  return { code: transformed.code ?? '', files: emittedFiles() };
+  const code = transformed.code ?? '';
+  return { code, modules: generatedModules(code) };
 }
 
 describe('babel plugin in bundleMode', () => {
   beforeEach(() => {
     process.env.WORKLETS_JEST_SHOULD_MOCK_VERSION = '1';
-    capturedFiles.length = 0;
-    nativelyEmittedFiles().length = 0;
   });
 
   describe('source replacement', () => {
@@ -100,7 +115,7 @@ describe('babel plugin in bundleMode', () => {
         const body = `{ 'worklet'; return [${name}(), _${name}()]; }`;
         const expression =
           kind === 'arrow' ? `() => ${body}` : `{ read() ${body} }.read`;
-        const { files } = runPlugin(
+        const { modules } = runPlugin(
           `
           import { first as ${name}, second as _${name} } from 'some-library';
           const f = ${expression};
@@ -108,13 +123,13 @@ describe('babel plugin in bundleMode', () => {
           {},
           { importForwarding: { moduleNames: ['some-library'] } }
         );
-        expect(files[0].content).toContain(`const __${name} =`);
-        expect(files[0].content).toMatchSnapshot();
+        expect(modules[0].content).toContain(`const __${name} =`);
+        expect(modules[0].content).toMatchSnapshot();
       }
     );
 
     test('packs captures in the same order at the call site and in the factory', () => {
-      const { code, files } = runPlugin(`
+      const { code, modules } = runPlugin(`
         function make(z, missing, a) {
           return (suffix) => {
             'worklet';
@@ -123,12 +138,12 @@ describe('babel plugin in bundleMode', () => {
         }
         module.exports = make;
       `);
-      expect(code).toMatchSnapshot();
-      expect(files[0].content).toMatchSnapshot();
+      expect(redactGeneratedModules(code)).toMatchSnapshot();
+      expect(modules[0].content).toMatchSnapshot();
     });
 
     test('exports closure-free worklets without a factory call', () => {
-      const { code, files } = runPlugin(`
+      const { code, modules } = runPlugin(`
         function factorial(n) {
           'worklet';
           return n <= 1 ? 1 : n * factorial(n - 1);
@@ -136,11 +151,11 @@ describe('babel plugin in bundleMode', () => {
         module.exports = factorial;
       `);
       expect(code).toMatch(/\.default;/);
-      expect(files[0].content).not.toContain('Factory');
-      expect(files[0].content).not.toContain('__closure');
+      expect(modules[0].content).not.toContain('Factory');
+      expect(modules[0].content).not.toContain('__closure');
     });
 
-    test('replaces inline factory with a require to the worklet file', () => {
+    test('replaces inline factory with a require of the generated module', () => {
       const input = html`<script>
         function foo() {
           'worklet';
@@ -148,9 +163,9 @@ describe('babel plugin in bundleMode', () => {
         }
       </script>`;
 
-      const { code, files } = runPlugin(input);
-      expect(files).toHaveLength(1);
-      expect(code).toMatchSnapshot();
+      const { code, modules } = runPlugin(input);
+      expect(modules).toHaveLength(1);
+      expect(redactGeneratedModules(code)).toMatchSnapshot();
     });
 
     test('still captures closure even with "no-worklet-closure" directive', () => {
@@ -163,15 +178,15 @@ describe('babel plugin in bundleMode', () => {
         }
       </script>`;
 
-      const { code, files } = runPlugin(input);
-      expect(files).toHaveLength(1);
-      expect(code).toMatchSnapshot();
-      expect(files[0].content).toMatchSnapshot();
+      const { code, modules } = runPlugin(input);
+      expect(modules).toHaveLength(1);
+      expect(redactGeneratedModules(code)).toMatchSnapshot();
+      expect(modules[0].content).toMatchSnapshot();
     });
   });
 
-  describe('worklet file emission', () => {
-    test('writes one worklet file per worklet', () => {
+  describe('worklet module generation', () => {
+    test('generates one worklet module per worklet', () => {
       const input = html`<script>
         function foo() {
           'worklet';
@@ -183,11 +198,11 @@ describe('babel plugin in bundleMode', () => {
         }
       </script>`;
 
-      const { files } = runPlugin(input);
-      expect(files).toHaveLength(2);
+      const { modules } = runPlugin(input);
+      expect(modules).toHaveLength(2);
     });
 
-    test('written file path matches the require path', () => {
+    test('requires the generated module by its inline specifier', () => {
       const input = html`<script>
         function foo() {
           'worklet';
@@ -195,14 +210,39 @@ describe('babel plugin in bundleMode', () => {
         }
       </script>`;
 
-      const { code, files } = runPlugin(input);
-      expect(files).toHaveLength(1);
-      const fileBasename = path.basename(files[0].path);
-      expect(code).toContain(`${REQUIRE_PREFIX}${fileBasename}"`);
-      expect(code).toMatchSnapshot();
+      const { code, modules } = runPlugin(input);
+      expect(modules).toHaveLength(1);
+      expect(code).toContain(`require("${modules[0].specifier}").default`);
+      expect(redactGeneratedModules(code)).toMatchSnapshot();
     });
 
-    test('written closure-free file exports the worklet directly', () => {
+    test('starts the generated module with the worklet-module directive', () => {
+      const input = html`<script>
+        function foo() {
+          'worklet';
+          var x = 1;
+        }
+      </script>`;
+
+      const { modules } = runPlugin(input);
+      expect(modules).toHaveLength(1);
+      expect(modules[0].content).toMatch(WORKLET_MODULE_DIRECTIVE);
+    });
+
+    test('records the bundler module id on the worklet', () => {
+      const input = html`<script>
+        function foo() {
+          'worklet';
+          var x = 1;
+        }
+      </script>`;
+
+      const { modules } = runPlugin(input);
+      expect(modules).toHaveLength(1);
+      expect(modules[0].content).toContain('foo.__moduleId = module.id;');
+    });
+
+    test('closure-free generated module exports the worklet directly', () => {
       const input = html`<script>
         function foo() {
           'worklet';
@@ -211,9 +251,9 @@ describe('babel plugin in bundleMode', () => {
         }
       </script>`;
 
-      const { files } = runPlugin(input);
-      expect(files).toHaveLength(1);
-      expect(files[0].content).toMatchSnapshot();
+      const { modules } = runPlugin(input);
+      expect(modules).toHaveLength(1);
+      expect(modules[0].content).toMatchSnapshot();
     });
 
     test('does not emit init data', () => {
@@ -224,9 +264,9 @@ describe('babel plugin in bundleMode', () => {
         }
       </script>`;
 
-      const { code, files } = runPlugin(input);
-      expect(code).toMatchSnapshot();
-      expect(files[0].content).toMatchSnapshot();
+      const { code, modules } = runPlugin(input);
+      expect(redactGeneratedModules(code)).toMatchSnapshot();
+      expect(modules[0].content).toMatchSnapshot();
     });
 
     test('does not emit stack-trace machinery', () => {
@@ -237,13 +277,13 @@ describe('babel plugin in bundleMode', () => {
         }
       </script>`;
 
-      const { files } = runPlugin(input);
-      expect(files).toHaveLength(1);
-      expect(files[0].content).not.toContain('__stackDetails');
-      expect(files[0].content).toMatchSnapshot();
+      const { modules } = runPlugin(input);
+      expect(modules).toHaveLength(1);
+      expect(modules[0].content).not.toContain('__stackDetails');
+      expect(modules[0].content).toMatchSnapshot();
     });
 
-    test('emits a worklet file when cwd has no @babel/preset-typescript reachable', () => {
+    test('generates a worklet module when cwd has no @babel/preset-typescript reachable', () => {
       const isolatedDir = fs.mkdtempSync(
         path.join(os.tmpdir(), 'worklets-isolated-cwd-')
       );
@@ -267,8 +307,8 @@ describe('babel plugin in bundleMode', () => {
 
       try {
         process.chdir(isolatedDir);
-        const { files } = runPlugin(input);
-        expect(files).toHaveLength(1);
+        const { modules } = runPlugin(input);
+        expect(modules).toHaveLength(1);
       } finally {
         process.chdir(previousCwd);
         fs.rmSync(isolatedDir, { recursive: true, force: true });
@@ -285,12 +325,12 @@ describe('babel plugin in bundleMode', () => {
         }
       </script>`;
 
-      const { code, files } = runPlugin(input);
-      expect(code).toMatchSnapshot();
-      expect(files[0].content).toMatchSnapshot();
+      const { code, modules } = runPlugin(input);
+      expect(redactGeneratedModules(code)).toMatchSnapshot();
+      expect(modules[0].content).toMatchSnapshot();
     });
 
-    test('preserves workletizable library imports in the written worklet file', () => {
+    test('preserves workletizable library imports in the generated module', () => {
       const input = html`<script>
         import { foo } from 'some-library';
         function bar() {
@@ -299,17 +339,17 @@ describe('babel plugin in bundleMode', () => {
         }
       </script>`;
 
-      const { code, files } = runPlugin(
+      const { code, modules } = runPlugin(
         input,
         {},
         { importForwarding: { moduleNames: ['some-library'] } }
       );
-      expect(files).toHaveLength(1);
-      expect(code).toMatchSnapshot();
-      expect(files[0].content).toMatchSnapshot();
+      expect(modules).toHaveLength(1);
+      expect(redactGeneratedModules(code)).toMatchSnapshot();
+      expect(modules[0].content).toMatchSnapshot();
     });
 
-    test('strips JSX dev attributes in written worklet files', () => {
+    test('strips JSX dev attributes in generated modules', () => {
       const input = html`<script>
         import { ImportedComponent } from 'react-native-worklets';
 
@@ -332,7 +372,7 @@ describe('babel plugin in bundleMode', () => {
       expect(control).toContain('__self');
       expect(control).toContain('__source');
 
-      const { files } = runPlugin(
+      const { modules } = runPlugin(
         input,
         {
           presets: [
@@ -343,10 +383,10 @@ describe('babel plugin in bundleMode', () => {
         { importForwarding: { moduleNames: ['react-native-worklets'] } },
         MOCK_TSX_LOCATION
       );
-      expect(files).toHaveLength(1);
-      expect(files[0].content).toContain('return <ImportedComponent />;');
-      expect(files[0].content).not.toContain('__self');
-      expect(files[0].content).not.toContain('__source');
+      expect(modules).toHaveLength(1);
+      expect(modules[0].content).toContain('return <ImportedComponent />;');
+      expect(modules[0].content).not.toContain('__self');
+      expect(modules[0].content).not.toContain('__source');
     });
 
     test('captures locally defined JSX components in the closure', () => {
@@ -368,10 +408,10 @@ describe('babel plugin in bundleMode', () => {
         MOCK_TSX_LOCATION
       );
       expect(code).toContain('LocalComponent');
-      expect(code).toMatchSnapshot();
+      expect(redactGeneratedModules(code)).toMatchSnapshot();
     });
 
-    test('rebases relative imports against the worklets directory', () => {
+    test('leaves relative imports as written in the importing file', () => {
       const input = html`<script>
         import { foo } from './bar';
         function baz() {
@@ -381,65 +421,44 @@ describe('babel plugin in bundleMode', () => {
       </script>`;
 
       const fakeFilename = '/some-library/src/file.ts';
-      const { files } = runPlugin(
+      const { modules } = runPlugin(
         input,
         {},
         { importForwarding: { relativePaths: ['some-library'] } },
         fakeFilename
       );
-      const filesDirPath = path.resolve(
-        path.dirname(require.resolve('react-native-worklets/package.json')),
-        '.worklets'
-      );
-      const expected = path
-        .relative(filesDirPath, '/some-library/src/bar')
-        .split(path.sep)
-        .join('/');
-      expect(files).toHaveLength(1);
-      expect(files[0].content).toContain(`from "${expected}"`);
+      expect(modules).toHaveLength(1);
+      expect(modules[0].content).toContain(`from "./bar"`);
     });
 
-    test('rebases relative requires inside the worklet body against the worklets directory', () => {
-      const input = html`<script>
-        function baz() {
-          'worklet';
-          const helper = require('./helper');
-          return helper.foo();
-        }
-      </script>`;
-
-      const fakeFilename = path.resolve(
-        __dirname,
-        '../../../some-library/file.js'
-      );
-      const { files } = runPlugin(
-        input,
-        {},
+    test.each<[label: string, filename: string, pluginOpts: PluginOptions]>([
+      [
+        'a workletizable package',
+        '/some-library/src/file.ts',
         { importForwarding: { relativePaths: ['some-library'] } },
-        fakeFilename
-      );
-      expect(files).toHaveLength(1);
-      expect(files[0].content).toContain(
-        `require("../../some-library/helper")`
-      );
-      expect(files[0].content).toMatchSnapshot();
-    });
+      ],
+      [
+        'a non-workletizable file',
+        '/not-a-workletizable-package/src/file.ts',
+        {},
+      ],
+    ])(
+      'leaves relative requires inside the worklet body as written in %s',
+      (_label, filename, pluginOpts) => {
+        const input = html`<script>
+          function baz() {
+            'worklet';
+            const helper = require('./helper');
+            return helper.foo();
+          }
+        </script>`;
 
-    test('does not rebase relative requires from non-workletizable files', () => {
-      const input = html`<script>
-        function baz() {
-          'worklet';
-          const helper = require('./helper');
-          return helper.foo();
-        }
-      </script>`;
-
-      const fakeFilename = '/not-a-workletizable-package/src/file.ts';
-      const { files } = runPlugin(input, {}, {}, fakeFilename);
-      expect(files).toHaveLength(1);
-      expect(files[0].content).toMatch(/require\(["']\.\/helper["']\)/);
-      expect(files[0].content).toMatchSnapshot();
-    });
+        const { modules } = runPlugin(input, {}, pluginOpts, filename);
+        expect(modules).toHaveLength(1);
+        expect(modules[0].content).toMatch(/require\(["']\.\/helper["']\)/);
+        expect(modules[0].content).toMatchSnapshot();
+      }
+    );
   });
 
   describe('bundle mode flag toggle', () => {
@@ -467,7 +486,7 @@ describe('babel plugin in bundleMode', () => {
   });
 
   describe('nested worklets', () => {
-    test('extracts each nested worklet into its own file', () => {
+    test('extracts each nested worklet into its own module', () => {
       const input = html`<script>
         const foo = function () {
           'worklet';
@@ -479,18 +498,20 @@ describe('babel plugin in bundleMode', () => {
         };
       </script>`;
 
-      const { code, files } = runPlugin(input);
-      expect(files).toHaveLength(2);
+      const { code, modules } = runPlugin(input);
+      expect(modules).toHaveLength(2);
       const sourceRequires = countOccurrences(code, REQUIRE_PREFIX);
       expect(sourceRequires).toBe(1);
-      const outerFile = files.find((f) => code.includes(path.basename(f.path)));
-      assert(outerFile);
-      expect(code).toMatchSnapshot();
-      expect(outerFile.content).toMatchSnapshot();
+      const [outerModule] = modules;
+      expect(code).toContain(`require("${outerModule.specifier}")`);
+      expect(redactGeneratedModules(code)).toMatchSnapshot();
+      expect(redactGeneratedModules(outerModule.content)).toMatchSnapshot();
     });
 
-    test('writes the inner worklet file before the outer one', () => {
-      // Inner factory must be on disk before the outer one references it via require().
+    test('requires the inner worklet module from the outer one', () => {
+      // The inner worklet is only reachable through the outer module, which
+      // carries the inner inline specifier in its own content rather than in the
+      // importing file.
       const input = html`<script>
         const foo = function () {
           'worklet';
@@ -502,16 +523,19 @@ describe('babel plugin in bundleMode', () => {
         };
       </script>`;
 
-      const { code, files } = runPlugin(input);
-      assert(files.length === 2);
-      const outerFile = files.find((f) => code.includes(path.basename(f.path)));
-      assert(outerFile);
-      expect(files[files.length - 1]).toBe(outerFile);
+      const { code, modules } = runPlugin(input);
+      assert(modules.length === 2);
+      const [outerModule, innerModule] = modules;
+      expect(code).not.toContain(innerModule.specifier);
+      expect(outerModule.content).toContain(
+        `require("${innerModule.specifier}").default`
+      );
+      expect(innerModule.content).not.toContain(DATA_URL_PREFIX);
     });
   });
 
   describe('with source maps enabled', () => {
-    test('emits a worklet file without crashing', () => {
+    test('generates a worklet module without crashing', () => {
       // Other tests in this file disable source maps so the filename can be
       // arbitrary; here we run with real source-map generation against a real
       // file path so that path is at least exercised once.
@@ -522,24 +546,19 @@ describe('babel plugin in bundleMode', () => {
         }
       </script>`;
 
-      const { code, files } = runPlugin(
+      const { code, modules } = runPlugin(
         input,
         {},
         { disableSourceMaps: false },
         __filename
       );
-      expect(files).toHaveLength(1);
+      expect(modules).toHaveLength(1);
       expect(code).toContain(REQUIRE_PREFIX);
     });
   });
 
-  describe('bail-out on already-generated worklet files', () => {
-    test('does not re-process a file inside the .worklets directory', () => {
-      const generatedFilename = path.join(
-        path.dirname(require.resolve('react-native-worklets/package.json')),
-        '.worklets',
-        '12345.js'
-      );
+  describe('bail-out on generated worklet modules', () => {
+    test('leaves a generated worklet module unchanged', () => {
       const input = html`<script>
         function foo() {
           'worklet';
@@ -547,12 +566,19 @@ describe('babel plugin in bundleMode', () => {
         }
       </script>`;
 
-      const { code, files } = runPlugin(input, {}, {}, generatedFilename);
-      expect(files).toHaveLength(0);
-      expect(code).not.toContain(REQUIRE_PREFIX);
+      const { modules } = runPlugin(input);
+      assert(modules.length === 1);
+      const [{ content }] = modules;
+      expect(content).toMatch(WORKLET_MODULE_DIRECTIVE);
+
+      const { code: rePassedCode, modules: rePassedModules } =
+        runPlugin(content);
+      expect(rePassedCode).toBe(reformat(content));
+      expect(rePassedCode).toMatch(WORKLET_MODULE_DIRECTIVE);
+      expect(rePassedModules).toHaveLength(0);
     });
 
-    test('autoworkletization fires before emitting a file', () => {
+    test('autoworkletization fires before generating the module', () => {
       const input = html`<script>
         function foo() {
           'worklet';
@@ -562,18 +588,21 @@ describe('babel plugin in bundleMode', () => {
         }
       </script>`;
 
-      const { files: firstPass } = runPlugin(input);
-      assert(firstPass.length >= 1);
-      const outerFile = firstPass[firstPass.length - 1];
-
-      const { code: rePassedCode } = runPlugin(
-        outerFile.content,
-        {},
-        {},
-        outerFile.path
+      const { modules } = runPlugin(input);
+      assert(modules.length === 2);
+      const [outerModule, innerModule] = modules;
+      expect(outerModule.content).toContain(
+        `require("${innerModule.specifier}")`
       );
 
-      expect(rePassedCode).toContain(REQUIRE_PREFIX);
+      const { code: rePassedCode, modules: rePassedModules } = runPlugin(
+        outerModule.content
+      );
+      expect(rePassedCode).toBe(reformat(outerModule.content));
+      expect(rePassedCode).toMatch(WORKLET_MODULE_DIRECTIVE);
+      expect(rePassedModules.map((module) => module.specifier)).toEqual([
+        innerModule.specifier,
+      ]);
     });
   });
 });

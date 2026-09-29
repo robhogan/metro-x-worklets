@@ -1,7 +1,7 @@
+import type { BabelFile } from '@babel/core';
 import { strict as assert } from 'assert';
-import path from 'path';
 
-import { generatedWorkletsDir, type WorkletsPluginPass } from './types';
+import { type WorkletsPluginPass, workletModuleDirective } from './types';
 
 const notCapturedIdentifiers = [
   // Based on https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects
@@ -146,7 +146,7 @@ const notCapturedIdentifiers = [
 ];
 
 export function initializeState(state: WorkletsPluginPass) {
-  state.skipFile = isGeneratedWorkletFile(state.file.opts.filename);
+  state.skipFile = isGeneratedWorkletModule(state.file);
   if (state.skipFile) {
     return;
   }
@@ -176,17 +176,11 @@ export function initializeState(state: WorkletsPluginPass) {
   };
 }
 
-export function isGeneratedWorkletFile(
-  filename: string | undefined | null
-): boolean {
-  if (!filename) {
-    return false;
-  }
-  const generatedWorkletsDirPath = path.join(
-    'react-native-worklets',
-    generatedWorkletsDir
+export function isGeneratedWorkletModule(file: BabelFile): boolean {
+  return file.ast.program.directives.some(
+    (programDirective) =>
+      programDirective.value.value === workletModuleDirective
   );
-  return filename.includes(generatedWorkletsDirPath);
 }
 
 export const defaultGlobals = new Set(notCapturedIdentifiers);

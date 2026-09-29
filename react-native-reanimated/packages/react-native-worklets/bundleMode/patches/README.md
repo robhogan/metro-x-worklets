@@ -1,17 +1,18 @@
 ## Patches for Bundle Mode
 
-To use Bundle Mode in `react-native-worklets` you need to apply several patches. Bundle Mode uses a bunch of APIs which aren't yet available in the React Native ecosystem.
+To use Bundle Mode in `react-native-worklets` with Fast Refresh you need to patch `metro-runtime`, which has no hook for forwarding module updates to Worklet Runtimes yet.
+
+Bundling itself needs no patch: worklet modules are `metro:inline` dependencies of the file that defines them, which Metro resolves to virtual modules anchored at that file. This requires a Metro that supports `metro:inline`.
 
 ## What to patch
 
-- `metro` - allows for seamless bundling in Bundle Mode.
 - `metro-runtime` - enables Fast Refresh support in Bundle Mode.
 
 ## Patching instructions
 
 Based on your package manager you should either use patches from `yarn` directory or `patch-package` directory.
 
-Find the version of `metro` and `metro-runtime` that are a closest match to the ones used in your project. You can find out which versions of packages you have by running `yarn why metro`, `npm why metro`, or `bun why metro --top`.
+Find the version of `metro-runtime` that is the closest match to the one used in your project. You can find out which version you have by running `yarn why metro-runtime`, `npm why metro-runtime`, or `bun why metro-runtime --top`.
 
 This versions don't have to match exactly as the patches are usually compatible with multiple versions of the packages.
 
@@ -21,13 +22,12 @@ Yarn Modern has a builtin patching functionality. Unfortunately, it cannot auto-
 
 1. Trigger the patch creation:
    ```terminal
-   yarn patch metro
+   yarn patch metro-runtime
    ```
 1. Following the instructions provided by Yarn change anything in the patched package.
 1. Following the instructions provided by Yarn generate a patch and necessary resolutions based on your changes.
 1. Replace the generated patch contents with the contents of the respective patch file.
 1. Run `yarn install` to re-apply the patch.
-1. Follow these steps for `metro-runtime` as well.
 
 ## Using npm and patch-package
 
@@ -43,9 +43,9 @@ Using npm and patch-package is a lot more problematic in patching transitive dep
    npm install patch-package --save-dev
    ```
 1. Create `patches` directory in the root of your project.
-1. If you're not certain which versions of patches you need to apply, you can run `npm why` to find out which versions of packages you have. For example, to find out which version of `metro` you have, run:
+1. If you're not certain which versions of patches you need to apply, you can run `npm why` to find out which versions of packages you have. For example, to find out which version of `metro-runtime` you have, run:
    ```terminal
-   npm why metro
+   npm why metro-runtime
    ```
 1. Copy the patch files for `metro`, `metro-runtime` to the `patches` directory.
 1. Run `patch-package` to apply the patches:
@@ -58,22 +58,22 @@ Using npm and patch-package is a lot more problematic in patching transitive dep
 Using bun for patching gives you the benefit of the bun runtime in your project (works with monorepos and `linker=isolated`). Bun's patching method generally works better in bun repos, and doesn't create any issues with transitive dependencies or the bun cache. (You should use the patches in the `patch-package` directory)
 
 1. Create `patches` directory in the project root
-1. If you're not certain which versions of patches you need to apply, you can run `bun why --top` to find out which versions of packages you have. For example, to find out which version of `metro` you have, run:
+1. If you're not certain which versions of patches you need to apply, you can run `bun why --top` to find out which versions of packages you have. For example, to find out which version of `metro-runtime` you have, run:
    ```terminal
-   bun why metro --top
+   bun why metro-runtime --top
    ```
 1. Run `bun patch` to prep packages:
    ```terminal
-   bun patch metro
+   bun patch metro-runtime
    ```
    AND
    ```terminal
    bun patch metro-runtime
    ```
-1. Replace metro version with your version of patch:
+1. Replace the metro-runtime version with your version of patch:
    (Change the numbers at the end (0.84.4) to the version of your choice (e.g. 0.82.4)
    ```terminal
-   curl -L https://github.com/software-mansion/react-native-reanimated/raw/main/packages/react-native-worklets/bundleMode/patches/patch-package/metro/metro%2B0.84.4.patch | git apply
+   curl -L https://github.com/software-mansion/react-native-reanimated/raw/main/packages/react-native-worklets/bundleMode/patches/patch-package/metro-runtime/metro-runtime%2B0.84.4.patch | git apply
    ```
    AND
    ```terminal
@@ -81,7 +81,7 @@ Using bun for patching gives you the benefit of the bun runtime in your project 
    ```
 1. Run `bun patch --commit` to commit patches to the repo:
    ```terminal
-   bun patch --commit 'node_modules/metro'
+   bun patch --commit 'node_modules/metro-runtime'
    ```
    AND
    ```terminal

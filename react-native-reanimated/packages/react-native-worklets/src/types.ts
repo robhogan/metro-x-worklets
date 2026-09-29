@@ -71,6 +71,8 @@ interface WorkletInitData {
 interface WorkletProps {
   __closure?: WorkletClosure;
   __workletHash: number;
+  /** Only in Bundle Mode: the bundler id of the module holding the worklet. */
+  __moduleId?: number | string;
   /** Only in Legacy Eval Mode. */
   __initData?: WorkletInitData;
   /** `__stackDetails` is removed after parsing. */

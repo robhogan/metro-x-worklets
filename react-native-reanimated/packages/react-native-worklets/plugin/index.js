@@ -68,7 +68,7 @@ var require_types = __commonJS({
   "lib/types.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.generatedWorkletsDir = exports2.workletClassFactorySuffix = exports2.WorkletizableObject = exports2.WorkletizableFunction = void 0;
+    exports2.workletModuleDirective = exports2.workletClassFactorySuffix = exports2.WorkletizableObject = exports2.WorkletizableFunction = void 0;
     exports2.isWorkletizableFunctionPath = isWorkletizableFunctionPath;
     exports2.isWorkletizableFunctionNode = isWorkletizableFunctionNode;
     exports2.isWorkletizableObjectPath = isWorkletizableObjectPath;
@@ -89,7 +89,7 @@ var require_types = __commonJS({
       return (0, types_12.isObjectExpression)(node);
     }
     exports2.workletClassFactorySuffix = "__classFactory";
-    exports2.generatedWorkletsDir = ".worklets";
+    exports2.workletModuleDirective = "worklet-module";
   }
 });
 
@@ -967,17 +967,13 @@ var require_file = __commonJS({
 var require_globals = __commonJS({
   "lib/globals.js"(exports2) {
     "use strict";
-    var __importDefault = exports2 && exports2.__importDefault || function(mod) {
-      return mod && mod.__esModule ? mod : { "default": mod };
-    };
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.globals = exports2.defaultGlobals = void 0;
     exports2.initializeState = initializeState;
-    exports2.isGeneratedWorkletFile = isGeneratedWorkletFile;
+    exports2.isGeneratedWorkletModule = isGeneratedWorkletModule;
     exports2.initializeGlobals = initializeGlobals;
     exports2.addCustomGlobals = addCustomGlobals;
     var assert_1 = require("assert");
-    var path_1 = __importDefault(require("path"));
     var types_12 = require_types();
     var notCapturedIdentifiers = [
       // Based on https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects
@@ -1105,7 +1101,7 @@ var require_globals = __commonJS({
     ];
     function initializeState(state) {
       var _a, _b;
-      state.skipFile = isGeneratedWorkletFile(state.file.opts.filename);
+      state.skipFile = isGeneratedWorkletModule(state.file);
       if (state.skipFile) {
         return;
       }
@@ -1128,12 +1124,8 @@ var require_globals = __commonJS({
         ]
       };
     }
-    function isGeneratedWorkletFile(filename) {
-      if (!filename) {
-        return false;
-      }
-      const generatedWorkletsDirPath = path_1.default.join("react-native-worklets", types_12.generatedWorkletsDir);
-      return filename.includes(generatedWorkletsDirPath);
+    function isGeneratedWorkletModule(file) {
+      return file.ast.program.directives.some((programDirective) => programDirective.value.value === types_12.workletModuleDirective);
     }
     exports2.defaultGlobals = new Set(notCapturedIdentifiers);
     function initializeGlobals() {
@@ -1255,30 +1247,11 @@ var require_imports = __commonJS({
   "lib/imports.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.updateRelativeRequires = updateRelativeRequires;
     exports2.isImport = isImport;
     exports2.isImportRelative = isImportRelative;
     exports2.canForwardModuleImport = canForwardModuleImport;
     exports2.canForwardRelativeImport = canForwardRelativeImport;
-    exports2.createImportPathLiteral = createImportPathLiteral;
-    var core_1 = require("@babel/core");
-    var types_12 = require("@babel/types");
     var path_1 = require("path");
-    var types_2 = require_types();
-    function updateRelativeRequires(node, state) {
-      (0, core_1.traverse)(node, {
-        noScope: true,
-        CallExpression(nodePath) {
-          var _a;
-          if (nodePath.get("callee").isIdentifier({ name: "require" }) && ((_a = nodePath.get("arguments")[0]) === null || _a === void 0 ? void 0 : _a.isStringLiteral())) {
-            const requiredModule = nodePath.get("arguments")[0];
-            if (requiredModule.node.value.startsWith(".") && canForwardRelativeImport(state.file.opts.filename || "", state.importForwarding.relativePaths)) {
-              requiredModule.replaceWith(createImportPathLiteral(requiredModule.node.value, state));
-            }
-          }
-        }
-      });
-    }
     function isImport(binding) {
       return binding.kind === "module" && binding.constant && (binding.path.isImportSpecifier() || binding.path.isImportDefaultSpecifier()) && binding.path.parentPath.isImportDeclaration();
     }
@@ -1304,12 +1277,6 @@ var require_imports = __commonJS({
         }
       }
       return false;
-    }
-    function createImportPathLiteral(originalPath, state) {
-      const generatedWorkletsDirPath = (0, path_1.resolve)((0, path_1.dirname)(require.resolve("react-native-worklets/package.json")), types_2.generatedWorkletsDir);
-      const resolved = (0, path_1.resolve)((0, path_1.dirname)(state.file.opts.filename), originalPath);
-      const relativePath = (0, path_1.relative)(generatedWorkletsDirPath, resolved);
-      return (0, types_12.stringLiteral)(path_1.sep === "/" ? relativePath : relativePath.split(path_1.sep).join("/"));
     }
   }
 });
@@ -1405,27 +1372,25 @@ var require_generate = __commonJS({
       return mod && mod.__esModule ? mod : { "default": mod };
     };
     Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.generateWorkletFile = generateWorkletFile;
+    exports2.generateWorkletModuleSpecifier = generateWorkletModuleSpecifier;
     var core_1 = require("@babel/core");
     var types_12 = require("@babel/types");
     var assert_1 = __importDefault(require("assert"));
-    var fs_1 = require("fs");
     var path_1 = require("path");
-    var imports_1 = require_imports();
     var types_2 = require_types();
-    function generateWorkletFile(moduleBindingsToImport, relativeBindingsToImport, factory, workletHash, state) {
-      var _a, _b;
-      const libraryImports = Array.from(moduleBindingsToImport).filter((binding) => (binding.path.isImportSpecifier() || binding.path.isImportDefaultSpecifier()) && binding.path.parentPath.isImportDeclaration()).map((binding) => (0, types_12.importDeclaration)([(0, types_12.cloneNode)(binding.path.node, true)], (0, types_12.stringLiteral)(binding.path.parentPath.node.source.value)));
-      const filesDirPath = (0, path_1.resolve)((0, path_1.dirname)(require.resolve("react-native-worklets/package.json")), types_2.generatedWorkletsDir);
-      const relativeImports = Array.from(relativeBindingsToImport).filter((binding) => binding.path.isImportSpecifier() && binding.path.parentPath.isImportDeclaration()).map((binding) => (0, types_12.importDeclaration)([(0, types_12.cloneNode)(binding.path.node, true)], (0, imports_1.createImportPathLiteral)(binding.path.parentPath.node.source.value, state)));
-      const imports = [...libraryImports, ...relativeImports];
+    function generateWorkletModuleSpecifier(moduleBindingsToImport, relativeBindingsToImport, factory, state) {
+      var _a;
+      const imports = Array.from([
+        ...moduleBindingsToImport,
+        ...relativeBindingsToImport
+      ]).filter((binding) => (binding.path.isImportSpecifier() || binding.path.isImportDefaultSpecifier()) && binding.path.parentPath.isImportDeclaration()).map((binding) => (0, types_12.importDeclaration)([(0, types_12.cloneNode)(binding.path.node, true)], (0, types_12.stringLiteral)(binding.path.parentPath.node.source.value)));
       const statements = [...factory.body.body];
       const returnedWorklet = statements.pop();
       (0, assert_1.default)((0, types_12.isReturnStatement)(returnedWorklet) && returnedWorklet.argument);
       const newProg = (0, types_12.program)([
         ...imports,
         ...factory.params.length === 0 ? [...statements, (0, types_12.exportDefaultDeclaration)(returnedWorklet.argument)] : [(0, types_12.exportDefaultDeclaration)(factory)]
-      ]);
+      ], [(0, types_12.directive)((0, types_12.directiveLiteral)(types_2.workletModuleDirective))]);
       const transformedProg = (_a = (0, core_1.transformFromAstSync)(newProg, void 0, {
         filename: state.file.opts.filename,
         presets: [resolvePresetTypescript()],
@@ -1436,10 +1401,7 @@ var require_generate = __commonJS({
         comments: false
       })) === null || _a === void 0 ? void 0 : _a.code;
       (0, assert_1.default)(transformedProg, "[Worklets] `transformedProg` is undefined.");
-      const dedicatedFilePath = (0, path_1.resolve)(filesDirPath, `${workletHash}.js`);
-      const output = process.env.WORKLETS_WRITE_ORIGIN ? `// __workletOrigin: ${(_b = state.file.opts.filename) !== null && _b !== void 0 ? _b : "unknown"}
-${transformedProg}` : transformedProg;
-      (0, fs_1.writeFileSync)(dedicatedFilePath, output);
+      return "metro:inline;base64," + Buffer.from(transformedProg, "utf8").toString("base64");
     }
     function resolvePresetTypescript() {
       try {
@@ -1781,7 +1743,6 @@ var require_workletFactory = __commonJS({
     var closure_1 = require_closure();
     var generate_1 = require_generate();
     var hermesBytecode_1 = require_hermesBytecode();
-    var imports_1 = require_imports();
     var transform_1 = require_transform();
     var types_2 = require_types();
     var utils_1 = require_utils();
@@ -1894,6 +1855,9 @@ var require_workletFactory = __commonJS({
       if (shouldIncludeInitData) {
         statements.push((0, types_12.expressionStatement)((0, types_12.assignmentExpression)("=", (0, types_12.memberExpression)((0, types_12.identifier)(reactName), (0, types_12.identifier)("__initData"), false), (0, types_12.cloneNode)(initDataId, true))));
       }
+      if (state.opts.bundleMode) {
+        statements.push((0, types_12.expressionStatement)((0, types_12.assignmentExpression)("=", (0, types_12.memberExpression)((0, types_12.identifier)(reactName), (0, types_12.identifier)("__moduleId"), false), (0, types_12.memberExpression)((0, types_12.identifier)("module"), (0, types_12.identifier)("id")))));
+      }
       if (!(0, utils_1.isRelease)(state) && !state.opts.bundleMode) {
         statements.unshift((0, types_12.variableDeclaration)("const", [
           (0, types_12.variableDeclarator)((0, types_12.identifier)("_e"), (0, types_12.arrayExpression)([
@@ -1919,12 +1883,12 @@ var require_workletFactory = __commonJS({
       const factory = (0, types_12.functionExpression)((0, types_12.identifier)(workletName + "Factory"), factoryParams.length > 0 ? [(0, types_12.arrayPattern)(factoryParams.map((param) => (0, types_12.cloneNode)(param, true)))] : [], (0, types_12.blockStatement)(statements));
       const factoryCallArgs = factoryParams.map((param) => (0, types_12.cloneNode)(param, true));
       const factoryCallParamPack = (0, types_12.arrayExpression)(factoryCallArgs);
+      let workletModuleSpecifier;
       if (state.opts.bundleMode) {
-        (0, imports_1.updateRelativeRequires)(factory, state);
-        (0, generate_1.generateWorkletFile)(moduleBindingsToImport, relativeBindingsToImport, factory, workletHash, state);
+        workletModuleSpecifier = (0, generate_1.generateWorkletModuleSpecifier)(moduleBindingsToImport, relativeBindingsToImport, factory, state);
       }
       factory.workletized = true;
-      return { factory, factoryCallParamPack, workletHash };
+      return { factory, factoryCallParamPack, workletHash, workletModuleSpecifier };
     }
     function hasDirective(path, directiveText) {
       if (!path.node.body) {
@@ -2010,14 +1974,15 @@ var require_workletFactoryCall = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.makeWorkletFactoryCall = makeWorkletFactoryCall;
     var types_12 = require("@babel/types");
-    var types_2 = require_types();
+    var assert_1 = require("assert");
     var workletFactory_1 = require_workletFactory();
     function makeWorkletFactoryCall(path, state) {
-      const { factory, factoryCallParamPack, workletHash } = (0, workletFactory_1.makeWorkletFactory)(path, state);
+      const { factory, factoryCallParamPack, workletModuleSpecifier } = (0, workletFactory_1.makeWorkletFactory)(path, state);
       let factoryCall;
       if (state.opts.bundleMode) {
+        (0, assert_1.strict)(workletModuleSpecifier, "`workletModuleSpecifier` is undefined.");
         const workletModule = (0, types_12.memberExpression)((0, types_12.callExpression)((0, types_12.identifier)("require"), [
-          (0, types_12.stringLiteral)(`react-native-worklets/${types_2.generatedWorkletsDir}/${workletHash}.js`)
+          (0, types_12.stringLiteral)(workletModuleSpecifier)
         ]), (0, types_12.identifier)("default"));
         if (factoryCallParamPack.elements.length === 0) {
           workletModule.loc = path.node.loc;

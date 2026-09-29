@@ -6,44 +6,49 @@ import { describe, expect, test } from '@jest/globals';
 import { strict as assert } from 'assert';
 import { html } from 'code-tag';
 
-import { countOccurrences } from '../jest/pluginTestUtils';
-
-type CapturedFile = { path: string; content: string };
-
-const capturedFiles: CapturedFile[] = [];
-
-// The OXC transform writes its files from Rust, so they never reach the `fs`
-// mock below. Its jest setup records them on `globalThis` instead.
-function nativelyEmittedFiles(): CapturedFile[] {
-  return ((
-    globalThis as { __WORKLETS_OXC_EMITTED__?: CapturedFile[] }
-  ).__WORKLETS_OXC_EMITTED__ ??= []);
-}
-
-function emittedFiles(): CapturedFile[] {
-  return capturedFiles.length > 0 ? [...capturedFiles] : nativelyEmittedFiles();
-}
-
-jest.mock('fs', () => {
-  const actual: object = jest.requireActual('fs');
-  return {
-    ...actual,
-    writeFileSync: (filepath: string, content: string) => {
-      capturedFiles.push({ path: String(filepath), content: String(content) });
-    },
-  };
-});
-
-// eslint-disable-next-line import/first
 import type { PluginOptions } from '../index';
-// eslint-disable-next-line import/first
 import plugin from '../index';
+import { countOccurrences } from '../jest/pluginTestUtils';
 
 const MOCK_LOCATION = 'test.js';
 
+const DATA_URL_PREFIX = 'metro:inline;base64,';
+const INLINE_MODULE_PATTERN = /metro:inline;base64,([A-Za-z0-9+/=]+)/g;
+
+type GeneratedModule = { specifier: string; content: string };
+
+/**
+ * Every generated worklet module the code requires, in order of appearance,
+ * each followed by the modules its own content requires in turn.
+ */
+function generatedModules(code: string): GeneratedModule[] {
+  return Array.from(
+    code.matchAll(INLINE_MODULE_PATTERN),
+    ([specifier, payload]): GeneratedModule => ({
+      specifier,
+      content: Buffer.from(payload, 'base64').toString('utf8'),
+    })
+  ).flatMap((module) => [module, ...generatedModules(module.content)]);
+}
+
+/**
+ * Keeps snapshots readable: each base64 payload is replaced by its position
+ * among the distinct payloads in the string, so the snapshot still pins the
+ * transport and the module count without a multi-KB blob.
+ */
+function redactGeneratedModules(code: string): string {
+  const positions = new Map<string, number>();
+  return code.replace(INLINE_MODULE_PATTERN, (specifier) => {
+    if (!positions.has(specifier)) {
+      positions.set(specifier, positions.size + 1);
+    }
+    return `${DATA_URL_PREFIX}<module ${positions.get(specifier)}>`;
+  });
+}
+
 type RunResult = {
   code: string;
-  files: CapturedFile[];
+  modules: GeneratedModule[];
 };
 
 function runPlugin(
@@ -51,8 +56,6 @@ function runPlugin(
   pluginOpts: PluginOptions,
   transformOpts: TransformOptions = {}
 ): RunResult {
-  capturedFiles.length = 0;
-  nativelyEmittedFiles().length = 0;
   const strippedInput = input.replace(/<\/?script[^>]*>/g, '');
   const transformed = transformSync(strippedInput, {
     filename: MOCK_LOCATION,
@@ -73,12 +76,13 @@ function runPlugin(
     ],
   });
   assert(transformed);
-  return { code: transformed.code ?? '', files: emittedFiles() };
+  const code = transformed.code ?? '';
+  return { code, modules: generatedModules(code) };
 }
 
 function workletText(result: RunResult, bundleMode: boolean): string {
   if (bundleMode) {
-    return result.files.map((f) => f.content).join('\n');
+    return result.modules.map((module) => module.content).join('\n');
   }
   return result.code;
 }
@@ -90,8 +94,6 @@ describe.each([
   beforeEach(() => {
     process.env.WORKLETS_JEST_SHOULD_MOCK_VERSION = '1';
     process.env.WORKLETS_JEST_SHOULD_MOCK_SOURCE_MAP = '1';
-    capturedFiles.length = 0;
-    nativelyEmittedFiles().length = 0;
   });
 
   describe('worklet shapes', () => {
@@ -148,12 +150,12 @@ describe.each([
     test.each(cases)('workletizes $name', ({ input }) => {
       const result = runPlugin(input, { bundleMode });
       const factoryCount = bundleMode
-        ? result.files.length
+        ? result.modules.length
         : countOccurrences(result.code, 'Factory(');
       expect(factoryCount).toBe(1);
-      expect(result.code).toMatchSnapshot();
+      expect(redactGeneratedModules(result.code)).toMatchSnapshot();
       if (bundleMode) {
-        expect(result.files[0].content).toMatchSnapshot();
+        expect(result.modules[0].content).toMatchSnapshot();
       }
     });
   });
@@ -225,9 +227,9 @@ describe.each([
       </script>`;
 
       const result = runPlugin(input, { bundleMode });
-      expect(result.code).toMatchSnapshot();
+      expect(redactGeneratedModules(result.code)).toMatchSnapshot();
       if (bundleMode) {
-        expect(result.files[0].content).toMatchSnapshot();
+        expect(result.modules[0].content).toMatchSnapshot();
       }
     });
   });
@@ -241,7 +243,7 @@ describe.each([
       </script>`;
 
       const result = runPlugin(input, { bundleMode });
-      expect(result.files).toHaveLength(0);
+      expect(result.modules).toHaveLength(0);
       expect(result.code).toMatchSnapshot();
     });
   });
@@ -287,7 +289,7 @@ describe.each([
       );
 
       const notOutlinedFunction = '.map(() => null);';
-      const output = bundleMode ? result.files[0].content : result.code;
+      const output = bundleMode ? result.modules[0].content : result.code;
 
       expect(output).toMatch(notOutlinedFunction);
       expect(output).toMatchSnapshot();

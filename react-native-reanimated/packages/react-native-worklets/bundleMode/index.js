@@ -1,6 +1,5 @@
 const path = require('path');
 
-const workletsPackageParentDir = path.resolve(__dirname, '../..');
 const reactNativeShimPath = path.join(__dirname, 'shims', 'reactNativeShim.js');
 const prepareBundleModePolyfillPath = path.join(
   __dirname,
@@ -9,7 +8,6 @@ const prepareBundleModePolyfillPath = path.join(
 );
 
 const workletsPackageName = 'react-native-worklets';
-const workletsDirPath = path.posix.join(workletsPackageName, '.worklets');
 const workletsSrcEntryPath = path.posix.join(
   workletsPackageName,
   'src',
@@ -28,10 +26,6 @@ function bundleModeResolveRequest(
   /** @type {any} */ platform,
   /** @type {any} */ userConfigResolveRequest
 ) {
-  if (moduleName.startsWith(workletsDirPath)) {
-    const fullModuleName = path.join(workletsPackageParentDir, moduleName);
-    return { type: 'sourceFile', filePath: fullModuleName };
-  }
   if (
     moduleName === 'react-native' &&
     context.originModulePath !== reactNativeShimPath
@@ -57,10 +51,6 @@ const bundleModeMetroConfig = {
       /** @type {string} */ moduleName,
       /** @type {any} */ platform
     ) => {
-      if (moduleName.startsWith(workletsDirPath)) {
-        const fullModuleName = path.join(workletsPackageParentDir, moduleName);
-        return { type: 'sourceFile', filePath: fullModuleName };
-      }
       if (
         moduleName === 'react-native' &&
         context.originModulePath !== reactNativeShimPath
@@ -111,6 +101,12 @@ function getBundleModeMetroConfig(/** @type {any} */ config) {
   return config;
 }
 
+/**
+ * Worklet modules are ordinary modules with bundler-assigned ids, which the
+ * worklet records from `module.id`. The only id the native side still assumes
+ * is the worklets entry point, which Worklet Runtimes require by the constant
+ * `-2` after evaluating the bundle.
+ */
 function bundleModeCreateModuleIdFactory() {
   let nextId = 0;
   const idFileMap = new Map();
@@ -119,20 +115,14 @@ function bundleModeCreateModuleIdFactory() {
     if (idFileMap.has(moduleName)) {
       return idFileMap.get(moduleName);
     }
-    if (moduleName.includes(workletsPackageName)) {
-      if (
-        moduleName.endsWith(workletsSrcEntryPath) ||
-        moduleName.endsWith(workletsLibEntryPath)
-      ) {
-        const entryPointId = -2;
-        idFileMap.set(moduleName, entryPointId);
-        return entryPointId;
-      } else if (moduleName.includes(workletsDirPath)) {
-        const base = path.basename(moduleName, '.js');
-        const id = Number(base);
-        idFileMap.set(moduleName, id);
-        return id;
-      }
+    if (
+      moduleName.includes(workletsPackageName) &&
+      (moduleName.endsWith(workletsSrcEntryPath) ||
+        moduleName.endsWith(workletsLibEntryPath))
+    ) {
+      const entryPointId = -2;
+      idFileMap.set(moduleName, entryPointId);
+      return entryPointId;
     }
     idFileMap.set(moduleName, nextId++);
     return idFileMap.get(moduleName);

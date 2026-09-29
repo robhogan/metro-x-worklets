@@ -6,27 +6,24 @@ import {
   memberExpression,
   stringLiteral,
 } from '@babel/types';
+import { strict as assert } from 'assert';
 
 import type { WorkletizableFunction, WorkletsPluginPass } from './types';
-import { generatedWorkletsDir } from './types';
 import { makeWorkletFactory } from './workletFactory';
 
 export function makeWorkletFactoryCall(
   path: NodePath<WorkletizableFunction>,
   state: WorkletsPluginPass
 ): CallExpression | MemberExpression {
-  const { factory, factoryCallParamPack, workletHash } = makeWorkletFactory(
-    path,
-    state
-  );
+  const { factory, factoryCallParamPack, workletModuleSpecifier } =
+    makeWorkletFactory(path, state);
 
   let factoryCall: CallExpression;
   if (state.opts.bundleMode) {
+    assert(workletModuleSpecifier, '`workletModuleSpecifier` is undefined.');
     const workletModule = memberExpression(
       callExpression(identifier('require'), [
-        stringLiteral(
-          `react-native-worklets/${generatedWorkletsDir}/${workletHash}.js`
-        ),
+        stringLiteral(workletModuleSpecifier),
       ]),
       identifier('default')
     );

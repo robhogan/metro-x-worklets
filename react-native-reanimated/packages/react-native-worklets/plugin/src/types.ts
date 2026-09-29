@@ -78,7 +78,12 @@ export function isWorkletizableObjectNode(
 
 export const workletClassFactorySuffix = '__classFactory';
 
-export const generatedWorkletsDir = '.worklets';
+/**
+ * Program directive marking a module the plugin generated for a worklet in
+ * Bundle Mode. The plugin skips such modules instead of workletizing them
+ * again.
+ */
+export const workletModuleDirective = 'worklet-module';
 
 type InitializedImportForwarding = Required<
   NonNullable<PluginOptions['importForwarding']>

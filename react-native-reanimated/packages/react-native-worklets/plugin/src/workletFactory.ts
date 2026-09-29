@@ -38,9 +38,8 @@ import { strict as assert } from 'assert';
 import { basename, relative, sep } from 'path';
 
 import { getClosure } from './closure';
-import { generateWorkletFile } from './generate';
+import { generateWorkletModuleSpecifier } from './generate';
 import { compileWorkletToHbc } from './hermesBytecode';
-import { updateRelativeRequires } from './imports';
 import { workletTransformSync } from './transform';
 import type { WorkletizableFunction, WorkletsPluginPass } from './types';
 import { workletClassFactorySuffix } from './types';
@@ -59,6 +58,8 @@ export function makeWorkletFactory(
   factory: FunctionExpression;
   factoryCallParamPack: ArrayExpression;
   workletHash: number;
+  /** Only in Bundle Mode: the `data:` URL of the module holding the worklet. */
+  workletModuleSpecifier?: string;
 } {
   // Returns a new FunctionExpression which is a workletized version of provided
   // FunctionDeclaration, FunctionExpression, ArrowFunctionExpression or ObjectMethod.
@@ -334,6 +335,25 @@ export function makeWorkletFactory(
     );
   }
 
+  if (state.opts.bundleMode) {
+    // Worklet Runtimes look the worklet up by the bundler's id for the module
+    // that holds it. The module records its own id at evaluation time, so no
+    // assumption about how the bundler assigns ids is needed.
+    statements.push(
+      expressionStatement(
+        assignmentExpression(
+          '=',
+          memberExpression(
+            identifier(reactName),
+            identifier('__moduleId'),
+            false
+          ),
+          memberExpression(identifier('module'), identifier('id'))
+        )
+      )
+    );
+  }
+
   if (!isRelease(state) && !state.opts.bundleMode) {
     statements.unshift(
       variableDeclaration('const', [
@@ -397,14 +417,12 @@ export function makeWorkletFactory(
 
   const factoryCallParamPack = arrayExpression(factoryCallArgs);
 
+  let workletModuleSpecifier: string | undefined;
   if (state.opts.bundleMode) {
-    updateRelativeRequires(factory, state);
-
-    generateWorkletFile(
+    workletModuleSpecifier = generateWorkletModuleSpecifier(
       moduleBindingsToImport,
       relativeBindingsToImport,
       factory,
-      workletHash,
       state
     );
   }
@@ -413,7 +431,7 @@ export function makeWorkletFactory(
   // to avoid further workletization inside the factory.
   factory.workletized = true;
 
-  return { factory, factoryCallParamPack, workletHash };
+  return { factory, factoryCallParamPack, workletHash, workletModuleSpecifier };
 }
 
 function hasDirective(

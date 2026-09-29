@@ -1,14 +1,16 @@
 // Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`babel plugin core (bundle mode) autoworkletization workletizes useAnimatedStyle callback 1`] = `
-"import { useAnimatedStyle } from "react-native-reanimated";
+"import { useAnimatedStyle } from 'react-native-reanimated';
 function Box() {
-  const style = useAnimatedStyle(require("react-native-worklets/.worklets/1.js").default);
+  const style = useAnimatedStyle(require("metro:inline;base64,<module 1>").default);
 }"
 `;
 
 exports[`babel plugin core (bundle mode) autoworkletization workletizes useAnimatedStyle callback 2`] = `
-"const testJs1 = function () {
+""worklet-module";
+
+const testJs1 = function () {
   "use no memo";
 
   return {
@@ -17,11 +19,14 @@ exports[`babel plugin core (bundle mode) autoworkletization workletizes useAnima
 };
 testJs1.__workletHash = 1;
 testJs1.__pluginVersion = "x.y.z";
+testJs1.__moduleId = module.id;
 export default testJs1;"
 `;
 
 exports[`babel plugin core (bundle mode) closure handling captures locally bound variables shadowing globals 1`] = `
-"export default (function f_testJs1Factory([console]) {
+""worklet-module";
+
+export default (function f_testJs1Factory([console]) {
   const f = function () {
     "use no memo";
 
@@ -30,12 +35,15 @@ exports[`babel plugin core (bundle mode) closure handling captures locally bound
   f.__closure = [console];
   f.__workletHash = 1;
   f.__pluginVersion = "x.y.z";
+  f.__moduleId = module.id;
   return f;
 });"
 `;
 
 exports[`babel plugin core (bundle mode) closure handling captures multiple closure variables 1`] = `
-"export default (function foo_testJs1Factory([a, b]) {
+""worklet-module";
+
+export default (function foo_testJs1Factory([a, b]) {
   const foo = function () {
     "use no memo";
 
@@ -44,12 +52,15 @@ exports[`babel plugin core (bundle mode) closure handling captures multiple clos
   foo.__closure = [a, b];
   foo.__workletHash = 1;
   foo.__pluginVersion = "x.y.z";
+  foo.__moduleId = module.id;
   return foo;
 });"
 `;
 
 exports[`babel plugin core (bundle mode) closure handling does not capture default globals 1`] = `
-"const f = function () {
+""worklet-module";
+
+const f = function () {
   "use no memo";
 
   console.log("hi");
@@ -57,28 +68,35 @@ exports[`babel plugin core (bundle mode) closure handling does not capture defau
 };
 f.__workletHash = 1;
 f.__pluginVersion = "x.y.z";
+f.__moduleId = module.id;
 export default f;"
 `;
 
 exports[`babel plugin core (bundle mode) closure handling does not capture navigator 1`] = `
-"const f = function () {
+""worklet-module";
+
+const f = function () {
   "use no memo";
 
   return navigator.gpu;
 };
 f.__workletHash = 1;
 f.__pluginVersion = "x.y.z";
+f.__moduleId = module.id;
 export default f;"
 `;
 
 exports[`babel plugin core (bundle mode) for react-compiler prevents outlining from worklet functions 1`] = `
-"const testJs1 = function () {
+""worklet-module";
+
+const testJs1 = function () {
   "use no memo";
 
   return [1, 2, 3].map(() => null);
 };
 testJs1.__workletHash = 1;
 testJs1.__pluginVersion = "x.y.z";
+testJs1.__moduleId = module.id;
 export default testJs1;"
 `;
 
@@ -88,72 +106,87 @@ exports[`babel plugin core (bundle mode) without worklets leaves code untouched 
 }"
 `;
 
-exports[`babel plugin core (bundle mode) worklet shapes workletizes ArrowFunctionExpression 1`] = `"const foo = require("react-native-worklets/.worklets/1.js").default;"`;
+exports[`babel plugin core (bundle mode) worklet shapes workletizes ArrowFunctionExpression 1`] = `"const foo = require("metro:inline;base64,<module 1>").default;"`;
 
 exports[`babel plugin core (bundle mode) worklet shapes workletizes ArrowFunctionExpression 2`] = `
-"const testJs1 = function (x) {
+""worklet-module";
+
+const testJs1 = function (x) {
   "use no memo";
 
   return x + 2;
 };
 testJs1.__workletHash = 1;
 testJs1.__pluginVersion = "x.y.z";
+testJs1.__moduleId = module.id;
 export default testJs1;"
 `;
 
-exports[`babel plugin core (bundle mode) worklet shapes workletizes FunctionDeclaration 1`] = `"const foo = require("react-native-worklets/.worklets/1.js").default;"`;
+exports[`babel plugin core (bundle mode) worklet shapes workletizes FunctionDeclaration 1`] = `"const foo = require("metro:inline;base64,<module 1>").default;"`;
 
 exports[`babel plugin core (bundle mode) worklet shapes workletizes FunctionDeclaration 2`] = `
-"const foo = function (x) {
+""worklet-module";
+
+const foo = function (x) {
   "use no memo";
 
   return x + 2;
 };
 foo.__workletHash = 1;
 foo.__pluginVersion = "x.y.z";
+foo.__moduleId = module.id;
 export default foo;"
 `;
 
 exports[`babel plugin core (bundle mode) worklet shapes workletizes ObjectMethod 1`] = `
 "const foo = {
-  bar: require("react-native-worklets/.worklets/1.js").default
+  bar: require("metro:inline;base64,<module 1>").default
 };"
 `;
 
 exports[`babel plugin core (bundle mode) worklet shapes workletizes ObjectMethod 2`] = `
-"const bar = function (x) {
+""worklet-module";
+
+const bar = function (x) {
   "use no memo";
 
   return x + 2;
 };
 bar.__workletHash = 1;
 bar.__pluginVersion = "x.y.z";
+bar.__moduleId = module.id;
 export default bar;"
 `;
 
-exports[`babel plugin core (bundle mode) worklet shapes workletizes named FunctionExpression 1`] = `"const foo = require("react-native-worklets/.worklets/1.js").default;"`;
+exports[`babel plugin core (bundle mode) worklet shapes workletizes named FunctionExpression 1`] = `"const foo = require("metro:inline;base64,<module 1>").default;"`;
 
 exports[`babel plugin core (bundle mode) worklet shapes workletizes named FunctionExpression 2`] = `
-"const foo = function (x) {
+""worklet-module";
+
+const foo = function (x) {
   "use no memo";
 
   return x + 2;
 };
 foo.__workletHash = 1;
 foo.__pluginVersion = "x.y.z";
+foo.__moduleId = module.id;
 export default foo;"
 `;
 
-exports[`babel plugin core (bundle mode) worklet shapes workletizes unnamed FunctionExpression 1`] = `"const foo = require("react-native-worklets/.worklets/1.js").default;"`;
+exports[`babel plugin core (bundle mode) worklet shapes workletizes unnamed FunctionExpression 1`] = `"const foo = require("metro:inline;base64,<module 1>").default;"`;
 
 exports[`babel plugin core (bundle mode) worklet shapes workletizes unnamed FunctionExpression 2`] = `
-"const testJs1 = function (x) {
+""worklet-module";
+
+const testJs1 = function (x) {
   "use no memo";
 
   return x + 2;
 };
 testJs1.__workletHash = 1;
 testJs1.__pluginVersion = "x.y.z";
+testJs1.__moduleId = module.id;
 export default testJs1;"
 `;
 
