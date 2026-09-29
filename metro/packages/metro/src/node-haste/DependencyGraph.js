@@ -26,6 +26,7 @@ import type {
   default as MetroFileMap,
 } from 'metro-file-map';
 
+import {isInlineModuleSpecifier} from '../lib/resolveInlineModule';
 import createFileMap from './DependencyGraph/createFileMap';
 import createModuleResolver from './DependencyGraph/createModuleResolver';
 import {PackageCache} from './PackageCache';
@@ -65,6 +66,7 @@ export default class DependencyGraph extends EventEmitter {
   _hasteMap: HasteMap;
   #dependencyPlugin: ?DependencyPlugin;
   _moduleResolver: ModuleResolver;
+  #virtualModuleSources: Map<string, Buffer> = new Map();
   _resolutionCache: Map<
     // Custom resolver options
     string | symbol,
@@ -255,6 +257,10 @@ export default class DependencyGraph extends EventEmitter {
     },
   ): BundlerResolution {
     const to = dependency.name;
+    // An inline module's identity is anchored at the importing module itself,
+    // not its directory: the same `metro:inline` specifier in two sibling files
+    // is two modules.
+    const isInlineModule = isInlineModuleSpecifier(to);
     const isSensitiveToOriginFolder =
       // Resolution is always relative to the origin folder unless we assume a flat node_modules
       !extraOptions.assumeFlatNodeModules ||
@@ -268,9 +274,11 @@ export default class DependencyGraph extends EventEmitter {
     // Compound key for the resolver cache
     const resolverOptionsKey =
       JSON.stringify(resolverOptions ?? {}, canonicalize) ?? '';
-    const originKey = isSensitiveToOriginFolder
-      ? path.dirname(originModulePath)
-      : '';
+    const originKey = isInlineModule
+      ? originModulePath
+      : isSensitiveToOriginFolder
+        ? path.dirname(originModulePath)
+        : '';
     const targetKey =
       to + (dependency.data.isESMImport === true ? '\0esm' : '\0cjs');
     const platformKey = platform ?? NULL_PLATFORM;
@@ -310,7 +318,26 @@ export default class DependencyGraph extends EventEmitter {
     }
 
     mapByPlatform.set(platformKey, resolution);
+    if (resolution.type === 'virtualModule') {
+      // The id embeds a hash of the source, so an entry can never be stale and
+      // never needs invalidating. Registering on every resolution, including
+      // memo hits, keeps the registry a superset of the resolution memo.
+      this.#virtualModuleSources.set(
+        resolution.filePath,
+        Buffer.from(resolution.source, 'utf8'),
+      );
+    }
     return resolution;
+  }
+
+  /**
+   * The source of a virtual module previously produced by `resolveDependency`,
+   * keyed by the module path it was given. A virtual module is only ever
+   * reached through a resolution that registers it, so a lookup miss means the
+   * path is not a virtual module.
+   */
+  getVirtualModuleSource(modulePath: string): Buffer | void {
+    return this.#virtualModuleSources.get(modulePath);
   }
 
   doesFileExist = (filePath: string): boolean => {

@@ -151,10 +151,20 @@ export type AllowOptionalDependenciesWithOptions = {
 export type AllowOptionalDependencies =
   boolean | AllowOptionalDependenciesWithOptions;
 
-export type BundlerResolution = Readonly<{
-  type: 'sourceFile',
-  filePath: string,
-}>;
+export type BundlerResolution =
+  | Readonly<{
+      type: 'sourceFile',
+      filePath: string,
+    }>
+  | Readonly<{
+      type: 'virtualModule',
+      /**
+       * The module's identity in the graph: the origin path with a suffix
+       * derived from a hash of `source`. See `lib/virtualModule.js`.
+       */
+      filePath: string,
+      source: string,
+    }>;
 
 export type Options<T = MixedOutput> = Readonly<{
   resolve: ResolveFn,
