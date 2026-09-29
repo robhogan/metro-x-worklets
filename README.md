@@ -1,3 +1,5 @@
+*Disclaimer: AI-generated.*
+
 # metro-x-worklets
 
 An experiment in making `react-native-worklets` bundle mode a first-class citizen of Metro - no files written into `node_modules` mid-transform, no Metro patches, and transform caching that's provably correct.
