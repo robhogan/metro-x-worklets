@@ -10,10 +10,12 @@
     "test": "jest"
   },
   "dependencies": {
+    "@react-native/new-app-screen": "0.88.0-rc.2",
     "react": "19.3.0",
     "react-native": "0.88.0-rc.2",
-    "@react-native/new-app-screen": "0.88.0-rc.2",
-    "react-native-safe-area-context": "^5.5.2"
+    "react-native-reanimated": "file:../react-native-reanimated/packages/react-native-reanimated",
+    "react-native-safe-area-context": "^5.5.2",
+    "react-native-worklets": "file:../react-native-reanimated/packages/react-native-worklets"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
