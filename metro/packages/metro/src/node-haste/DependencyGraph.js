@@ -66,7 +66,6 @@ export default class DependencyGraph extends EventEmitter {
   _hasteMap: HasteMap;
   #dependencyPlugin: ?DependencyPlugin;
   _moduleResolver: ModuleResolver;
-  #virtualModuleSources: Map<string, Buffer> = new Map();
   _resolutionCache: Map<
     // Custom resolver options
     string | symbol,
@@ -318,26 +317,7 @@ export default class DependencyGraph extends EventEmitter {
     }
 
     mapByPlatform.set(platformKey, resolution);
-    if (resolution.type === 'virtualModule') {
-      // The id embeds a hash of the source, so an entry can never be stale and
-      // never needs invalidating. Registering on every resolution, including
-      // memo hits, keeps the registry a superset of the resolution memo.
-      this.#virtualModuleSources.set(
-        resolution.filePath,
-        Buffer.from(resolution.source, 'utf8'),
-      );
-    }
     return resolution;
-  }
-
-  /**
-   * The source of a virtual module previously produced by `resolveDependency`,
-   * keyed by the module path it was given. A virtual module is only ever
-   * reached through a resolution that registers it, so a lookup miss means the
-   * path is not a virtual module.
-   */
-  getVirtualModuleSource(modulePath: string): Buffer | void {
-    return this.#virtualModuleSources.get(modulePath);
   }
 
   doesFileExist = (filePath: string): boolean => {

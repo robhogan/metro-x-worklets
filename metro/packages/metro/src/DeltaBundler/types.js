@@ -90,9 +90,19 @@ export type Module<T = MixedOutput> = Readonly<{
   unstable_transformResultKey?: ?string,
 }>;
 
+/**
+ * Transform input that a dependency's resolution supplies, rather than the
+ * transformer reading the module from disk: the parameters of a
+ * `require.context` module, or the source of a virtual module.
+ */
+export type ResolvedModuleInput =
+  | Readonly<{type: 'requireContext', requireContext: RequireContext}>
+  | Readonly<{type: 'source', source: Buffer}>;
+
 export type ModuleData<T = MixedOutput> = Readonly<{
   dependencies: ReadonlyMap<string, Dependency>,
-  resolvedContexts: ReadonlyMap<string, RequireContext>,
+  /** Keyed by dependency key, for the dependencies whose resolution supplied a transform input. */
+  resolvedInputs: ReadonlyMap<string, ResolvedModuleInput>,
   output: ReadonlyArray<T>,
   getSource: () => Buffer,
   unstable_transformResultKey?: ?string,
@@ -137,7 +147,7 @@ export type TransformResultWithSource<T = MixedOutput> = Readonly<{
 
 export type TransformFn<T = MixedOutput> = (
   string,
-  ?RequireContext,
+  ?ResolvedModuleInput,
 ) => Promise<TransformResultWithSource<T>>;
 
 export type ResolveFn = (
@@ -163,6 +173,7 @@ export type BundlerResolution =
        * derived from a hash of `source`. See `lib/virtualModule.js`.
        */
       filePath: string,
+      /** Carried to the transform as the module's input in place of a file read. */
       source: string,
     }>;
 

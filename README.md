@@ -26,7 +26,7 @@ The generated module belongs in the graph as a node the *resolver* produces, not
 require("metro:inline;base64,<module source>").default([closure])
 ```
 
-and Metro's `metro:` scheme resolver decodes the payload into a `VirtualResolution` anchored at the importing file. The module path becomes `<importer>?virtual=<sha1(source)>` - the same shape as `?ctx=` - so `path.dirname` is the importer's directory and imports inside the worklet resolve exactly as they would from the file that defined it. Because the path embeds the content hash, the transform cache key is a pure function of the path. A worklet module can't be stale: if the source changed, it's a different module.
+and Metro's `metro:` scheme resolver decodes the payload into a `VirtualResolution` anchored at the importing file. The module path becomes `<importer>?virtual=<sha1(source)>` - the same shape as `?ctx=` - so `path.dirname` is the importer's directory and imports inside the worklet resolve exactly as they would from the file that defined it. The source rides the graph edge that resolved it, in the same slot `require.context` uses for its parameters, so it's released with the module. Because the path embeds the content hash, the transform cache key is a pure function of the path. A worklet module can't be stale: if the source changed, it's a different module.
 
 Nothing on the worklets side depends on how ids are assigned any more. Each generated module records `__moduleId = module.id`, the unpacker on the Worklet Runtime does `__r(__moduleId)`, and the native side needs no change because it already copies every own property of a worklet.
 
