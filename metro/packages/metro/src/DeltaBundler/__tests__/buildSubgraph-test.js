@@ -109,7 +109,7 @@ describe('GraphTraversal', () => {
       ]),
       getSource: expect.any(Function),
       output: [],
-      resolvedContexts: new Map(),
+      resolvedInputs: new Map(),
     });
   });
 
@@ -131,7 +131,7 @@ describe('GraphTraversal', () => {
     };
     expect(params.transform).toHaveBeenCalledWith(
       '/virtual?ctx=af3bf59b8564d441084c02bdf04c4d662d74d3bd',
-      expectedResolvedContext,
+      {type: 'requireContext', requireContext: expectedResolvedContext},
     );
     expect(params.transform).toHaveBeenCalledWith('/contextMatch', undefined);
     expect(params.transform).toHaveBeenCalledWith(
@@ -153,8 +153,14 @@ describe('GraphTraversal', () => {
                 },
               ],
             ]),
-            resolvedContexts: new Map([
-              ['key-virtual', expectedResolvedContext],
+            resolvedInputs: new Map([
+              [
+                'key-virtual',
+                {
+                  type: 'requireContext',
+                  requireContext: expectedResolvedContext,
+                },
+              ],
             ]),
             output: [],
             getSource: expect.any(Function),
@@ -164,7 +170,7 @@ describe('GraphTraversal', () => {
           '/contextMatch',
           {
             dependencies: new Map(),
-            resolvedContexts: new Map(),
+            resolvedInputs: new Map(),
             output: [],
             getSource: expect.any(Function),
           },
@@ -185,7 +191,7 @@ describe('GraphTraversal', () => {
                 },
               ],
             ]),
-            resolvedContexts: new Map(),
+            resolvedInputs: new Map(),
             output: [],
             getSource: expect.any(Function),
           },

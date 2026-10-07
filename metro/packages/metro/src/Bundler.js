@@ -84,7 +84,7 @@ export default class Bundler {
     return this._transformer.transformFile(
       filePath,
       transformOptions,
-      fileBuffer ?? this._depGraph.getVirtualModuleSource(filePath),
+      fileBuffer,
     );
   }
 

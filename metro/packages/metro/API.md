@@ -70,7 +70,6 @@ export class DependencyGraph extends EventEmitter {
   getDependencies(filePath: string): Array<string>;
   getHasteName(filePath: string): string;
   getOrComputeSha1(mixedPath: string): Promise<{content?: Buffer | undefined; sha1: string}>;
-  getVirtualModuleSource(modulePath: string): Buffer | void;
   getWatcher(): EventEmitter;
   matchFilesWithContext(from: string, context: Readonly<{recursive: boolean; filter: RegExp}>): Iterable<string>;
   ready(): Promise<void>;
